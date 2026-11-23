@@ -29,6 +29,8 @@ import AdminPartners from "./pages/AdminPartners";
 import Audit from "./pages/Audit";
 import Rapport from "./pages/Rapport";
 import Connecteurs from "./pages/Connecteurs";
+import MesFichiers from "./pages/MesFichiers";
+import Profil from "./pages/Profil";
 import { Spinner } from "./components";
 import { activerNotifications } from "./push";
 
@@ -95,11 +97,13 @@ createRoot(document.getElementById("root")).render(
           <Route path="saisie" element={<Garde perm="sales.write"><Saisie /></Garde>} />
           <Route path="imports" element={<Garde perm="imports.read"><Imports /></Garde>} />
           <Route path="connecteurs" element={<Garde perm="imports.write"><Connecteurs /></Garde>} />
+          <Route path="fichiers" element={<Garde perm="imports.write"><MesFichiers /></Garde>} />
           <Route path="partenaires" element={<Garde perm="partners.manage"><AdminPartners /></Garde>} />
           <Route path="users" element={<Garde perm="users.manage"><Users /></Garde>} />
           <Route path="audit" element={<Garde perm="audit.view"><Audit /></Garde>} />
           <Route path="rapport" element={<Garde perm="reports.view"><Rapport /></Garde>} />
-          <Route path="compte" element={<Compte />} />
+          <Route path="compte" element={<Profil />} />
+          <Route path="compte/ancien" element={<Compte />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -25,7 +25,6 @@ import QrCode2Icon from "@mui/icons-material/QrCode2";
 import GroupsIcon from "@mui/icons-material/Groups";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import SpellcheckIcon from "@mui/icons-material/Spellcheck";
-import DoneAllIcon from "@mui/icons-material/DoneAll";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PublicIcon from "@mui/icons-material/Public";
 import {
@@ -134,7 +133,7 @@ function HeroDashboard({ d, live, maj, partners }) {
             <span className="dc-chip on">30 derniers jours</span>
             <span className="dc-chip">National</span>
             <span className="dc-chip">Tous canaux</span>
-            <span className="dc-chip dc-chip-right"><PublicIcon /> {d?.regions ?? "—"} régions</span>
+            <span className="dc-chip dc-chip-right"><PublicIcon /> {d?.regions ?? "-"} régions</span>
           </div>
           <div className="dc-kpis">
             <div className="dc-kpi dc-kpi-hero">
@@ -149,7 +148,7 @@ function HeroDashboard({ d, live, maj, partners }) {
             <div className="dc-kpi">
               <small>Transactions</small>
               <b>{k.nb30 ? <Counter value={k.nb30} /> : "···"}</b>
-              <span className={k.varNb < 0 ? "down" : "up"}>{k.varNb == null ? "—" : `${pct(k.varNb)} de tickets`}</span>
+              <span className={k.varNb < 0 ? "down" : "up"}>{k.varNb == null ? "-" : `${pct(k.varNb)} de tickets`}</span>
             </div>
             <div className="dc-kpi">
               <small>Panier moyen</small>
@@ -202,23 +201,6 @@ function HeroDashboard({ d, live, maj, partners }) {
             </div>
           </div>
         </div>
-      </motion.div>
-      <motion.div className="float-chip float-chip-1" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ ...spring, delay: 0.7 }}>
-        <span className="chip-ic" style={{ background: "#E6F9F1", color: "#00A36C" }}><DoneAllIcon /></span>
-        <div><b>Import Excel terminé</b><span>2 480 lignes · 0 rejet</span></div>
-      </motion.div>
-      <motion.div className="float-chip float-chip-2" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ ...spring, delay: 0.9 }}>
-        <span className="chip-ic" style={{ background: "#FFF4DC", color: "#B47800" }}><NotificationsActiveIcon /></span>
-        <div><b>Alerte marge · Ouest</b><span>−5,2 % vs N-1</span></div>
-      </motion.div>
-      <motion.div className="float-chip float-chip-3" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 1.05 }}>
-        <span className="chip-avatars">
-          {(partners.length ? partners.slice(0, 3) : LOGO_FALLBACK.slice(0, 3)).map((p, i) => {
-            const logo = p.logo || p[0];
-            return <img key={i} src={logo} alt="" />;
-          })}
-        </span>
-        <div><b>{partners.length || 9} partenaires</b><span>logos synchronisés</span></div>
       </motion.div>
     </div>
   );
@@ -397,30 +379,17 @@ export default function Landing() {
                 <span className="eyebrow"><span className="dot" /> Pilotage commercial · Afrique centrale</span>
                 <h1>Vos ventes, en direct.<br /><span className="grad">Vos décisions, en avance.</span></h1>
                 <p className="sub">
-                  MboaPilot branche vos caisses, vos agences et votre e-commerce, sécurise chaque ligne,
-                  et transforme vos données FCFA en décisions — <b>avant</b> que la semaine ne soit perdue.
+                  MboaPilot regroupe les ventes de vos caisses, de vos agences et de votre boutique en ligne.
+                  Vous consultez un seul tableau de bord, avec les chiffres de la semaine en cours.
                 </p>
                 <div className="hero-ctas">
                   <Link className="btn btn-brand btn-lg" to="/partenaires">Réserver une démo <ArrowForwardIcon /></Link>
                   <Link className="btn btn-outline btn-lg" to="/login"><PlayArrowIcon /> Explorer le cockpit</Link>
                 </div>
-                <p className="hero-note"><ShieldIcon /> Démo sur données réelles · sans carte bancaire · réponse sous 24 h</p>
-                <div className="hero-proof">
-                  <div><b><Counter value={d?.nb || 0} /></b><span>transactions suivies</span></div>
-                  <div><b><Counter value={d?.caM || 0} suffix=" M" /></b><span>FCFA pilotés</span></div>
-                  <div><b><Counter value={d?.sites?.pdv || 0} /></b><span>points de vente</span></div>
-                  <div><b><Counter value={partners.length || 9} /></b><span>partenaires actifs</span></div>
-                </div>
+                <p className="hero-note"><ShieldIcon /> Données de démonstration · aucune carte bancaire</p>
               </motion.div>
             </div>
             <HeroDashboard d={d} live={live} maj={maj} partners={partners} />
-          </div>
-          <div className="hero-trust wrap-wide">
-            <span>Branché sur vos outils existants</span>
-            <div className="hero-trust-logos">
-              {["CSV", "Excel", "POS", "API", "Formulaires"].map((x) => <i key={x}>{x}</i>)}
-            </div>
-            <span className="hero-trust-right"><span className="live-dot" /> {maj ? `données synchronisées à ${maj}` : "synchronisation…"}</span>
           </div>
         </section>
 
@@ -512,7 +481,7 @@ export default function Landing() {
                 <div className="live-band-copy">
                   <span className="eyebrow" style={{ background: "rgba(99,91,255,.16)", color: "#D5D2FF", border: 0 }}><span className="dot" /> Données réelles, pas une maquette</span>
                   <h2>Le réseau MboaPilot, en ce moment.</h2>
-                  <p>Les chiffres ci-dessous sortent de la base de démonstration : {fmt(d?.nb || 0)} transactions, {d?.sites?.produits || "—"} produits, {d?.regions || "—"} régions. Rechargez, ils bougent.</p>
+                  <p>Chiffres de la base de démonstration : {fmt(d?.nb || 0)} transactions, {d?.sites?.produits || "-"} produits, {d?.regions || "-"} régions.</p>
                   <div className="live-band-actions">
                     <Link className="btn btn-brand" to="/login">Ouvrir la démo <ArrowForwardIcon /></Link>
                     <span><span className="live-dot" /> mis à jour à {maj || "…"}</span>
@@ -521,8 +490,8 @@ export default function Landing() {
                 <div className="live-band-stats">
                   <div><small>CA sur 30 jours</small><b>{fmtFCFA(k.ca30 || 0)}</b><span className={k.var30 < 0 ? "down" : "up"}>{pct(k.var30)} vs N-1</span></div>
                   <div><small>Panier moyen</small><b>{fmtFCFA(k.panier || 0)}</b><span>{fmt(k.nb30 || 0)} tickets</span></div>
-                  <div><small>Taux de marge</small><b>{k.tauxMarge != null ? `${k.tauxMarge} %` : "—"}</b><span>{fmtFCFA(k.marge30 || 0)} de marge</span></div>
-                  <div><small>Objectif 30 jours</small><b>{k.objPct != null ? `${k.objPct} %` : "—"}</b><span>trajectoire sur N-1 +10 %</span></div>
+                  <div><small>Taux de marge</small><b>{k.tauxMarge != null ? `${k.tauxMarge} %` : "-"}</b><span>{fmtFCFA(k.marge30 || 0)} de marge</span></div>
+                  <div><small>Objectif 30 jours</small><b>{k.objPct != null ? `${k.objPct} %` : "-"}</b><span>objectif enregistré dans le référentiel</span></div>
                 </div>
               </div>
             </Reveal>
@@ -563,7 +532,7 @@ export default function Landing() {
               {[
                 { ic: <QrCode2Icon />, t: "MFA TOTP réelle", p: "Authenticator, QR d'enrôlement, codes de secours à usage unique. Les codes de démonstration disparaissent en production." },
                 { ic: <LockIcon />, t: "Sessions signées", p: "Cookie HttpOnly, CSRF sur chaque écriture, expiration d'inactivité et durée absolue, invalidation par version de session." },
-                { ic: <GroupsIcon />, t: "Moindre privilège", p: "Quatre rôles, une matrice de permissions explicite, périmètres régionaux appliqués côté serveur — jamais dans le navigateur." },
+                { ic: <GroupsIcon />, t: "Moindre privilège", p: "Quatre rôles, une matrice de permissions explicite, périmètres régionaux appliqués côté serveur - jamais dans le navigateur." },
                 { ic: <ReceiptLongIcon />, t: "Audit chaîné", p: "Chaque connexion, import, export et changement est horodaté et chaîné SHA-256. Vérification d'intégrité à la demande." },
               ].map((s, i) => (
                 <Reveal key={s.t} delay={i * 0.08}><div className="secu secu-v2">
@@ -602,7 +571,7 @@ export default function Landing() {
                 <div className="partner-feature-copy">
                   <span className="eyebrow"><span className="dot" /> Réseau partenaires</span>
                   <h2>Votre logo sur l'accueil. Votre démo dans l'agenda.</h2>
-                  <p>Inscrivez votre entreprise, téléversez votre logo et choisissez un créneau de démonstration. Après validation par l'équipe, votre logo rejoint automatiquement le mur des partenaires — sans redéploiement, sans intervention technique.</p>
+                  <p>Inscrivez votre entreprise, téléversez votre logo et choisissez un créneau de démonstration. Après validation, votre logo apparaît sur l'accueil.</p>
                   <div className="partner-steps">
                     <div><span>01</span><b>Créez votre espace</b><small>Email professionnel, mot de passe fort, logo PNG/JPG/WebP.</small></div>
                     <div><span>02</span><b>Réservez votre démo</b><small>Date et créneau sous 120 jours, suivi par lien privé.</small></div>
@@ -730,7 +699,7 @@ export default function Landing() {
             <i style={{ width: 420, height: 280, right: -100, bottom: -100, background: "#00D4FF" }} />
             <span className="eyebrow" style={{ background: "rgba(255,255,255,.12)", color: "#fff", border: 0 }}><span className="dot" /> Votre prochaine revue</span>
             <h2>Prêt à voir vos ventes autrement ?</h2>
-            <p style={{ maxWidth: "58ch", margin: "0 auto 28px" }}>30 minutes sur vos propres chiffres : on connecte un échantillon, vous repartez avec votre premier tableau de bord — et votre logo sur notre mur si vous devenez partenaire.</p>
+            <p style={{ maxWidth: "58ch", margin: "0 auto 28px" }}>30 minutes sur vos propres chiffres : on connecte un échantillon, vous repartez avec votre premier tableau de bord - et votre logo sur notre mur si vous devenez partenaire.</p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", position: "relative" }}>
               <Link className="btn btn-brand btn-lg" to="/partenaires" style={{ background: "#fff", color: "var(--ink)" }}>Réserver ma démo <ArrowForwardIcon /></Link>
               <Link className="btn btn-lg" to="/login" style={{ color: "#fff", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.4)" }}><PlayArrowIcon /> Tester le cockpit</Link>

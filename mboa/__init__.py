@@ -66,6 +66,8 @@ def create_app():
     from .extensions import bp as extensions_bp
     from .etl import bp as etl_bp
     from .rapports import bp as rapports_bp
+    from .fichiers import bp as fichiers_bp
+    from .profil import bp as profil_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(imports_bp)
@@ -74,6 +76,8 @@ def create_app():
     app.register_blueprint(extensions_bp)
     app.register_blueprint(etl_bp)
     app.register_blueprint(rapports_bp)
+    app.register_blueprint(fichiers_bp)
+    app.register_blueprint(profil_bp)
 
     @app.before_request
     def garde_session_csrf():
@@ -182,6 +186,11 @@ def create_app():
     @app.route("/media/logos/<path:filename>")
     def media_logo(filename):
         return send_from_directory(LOGOS_DIR, filename, max_age=600)
+
+    @app.route("/media/avatars/<path:filename>")
+    def media_avatar(filename):
+        from .profil import AVATARS
+        return send_from_directory(AVATARS, filename, max_age=3600)
 
     @app.route("/assets/<path:filename>")
     def spa_assets(filename):

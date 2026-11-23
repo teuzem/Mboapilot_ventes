@@ -16,7 +16,7 @@ import { Logo, Spinner } from "../components";
 
 function telechargerCodes(codes, login) {
   const texte = [
-    "MboaPilot — codes de secours MFA",
+    "MboaPilot - codes de secours MFA",
     `Compte : ${login}`,
     `Générés le : ${new Date().toLocaleString("fr-FR")}`,
     "",

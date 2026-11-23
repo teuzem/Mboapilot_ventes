@@ -17,7 +17,7 @@ const PAGES = {
   cgu: ["Conditions d'utilisation", [
     ["1 · Objet & accès", "Suivi automatisé et sécurisé des ventes : collecte, dashboards FCFA, alertes, audit. Compte nominatif et personnel ; toute compromission suspectée se signale sous 24h."],
     ["2 · Vos responsabilités", "Données licites et exactes. Respect des périmètres : tout contournement du cloisonnement suspend le compte. Pas d'extraction massive hors exports prévus."],
-    ["3 · Nos engagements", "Disponibilité cible 99,5 % (Réseau), reprise sans perte en cas de coupure, support en français 8–48h selon l'offre, export complet de vos données à tout moment et à la résiliation (30 jours)."],
+    ["3 · Nos engagements", "Disponibilité cible 99,5 % (Réseau), reprise sans perte en cas de coupure, support en français 8-48h selon l'offre, export complet de vos données à tout moment et à la résiliation (30 jours)."],
     ["4 · Tarifs", "Prix FCFA affichés sur la page Tarifs, révisables avec 60 jours de préavis. Zéro commission sur votre CA, zéro frais caché."],
     ["5 · Responsabilité", "MboaPilot éclaire la décision, vous la prenez : les arbitrages restent sous votre responsabilité, plafonnée à 12 mois d'abonnement. Droit camerounais."],
   ]],

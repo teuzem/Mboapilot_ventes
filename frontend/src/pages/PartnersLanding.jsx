@@ -127,7 +127,7 @@ export default function PartnersLanding() {
             <div>
               <span className="eyebrow"><span className="dot" /> Portail partenaires</span>
               <h1>Votre logo sur notre accueil.<br /><span className="grad">Votre démo dans nos agendas.</span></h1>
-              <p className="sub">Un espace sécurisé pour les entreprises qui veulent voir MboaPilot en action. Inscription en 3 minutes, logo téléversé, créneau de démonstration réservé — et publication automatique sur le mur des partenaires après validation.</p>
+              <p className="sub">Un espace sécurisé pour les entreprises qui veulent voir MboaPilot en action. Inscription en 3 minutes, logo téléversé, créneau de démonstration réservé - et publication automatique sur le mur des partenaires après validation.</p>
               <div className="hero-ctas">
                 <a className="btn btn-brand btn-lg" href="#inscription">Créer mon espace partenaire <ArrowForwardIcon /></a>
                 <Link className="btn btn-outline btn-lg" to="/partenaires/connexion">J'ai déjà un compte</Link>

@@ -339,7 +339,7 @@ export default function Imports() {
         <div className="imports-stats">
           <div className="import-stat">
             <small>Lots d'import</small>
-            <b>{stats.total ?? "—"}</b>
+            <b>{stats.total ?? "-"}</b>
             <span>sur votre périmètre</span>
           </div>
           <div className="import-stat good">
@@ -354,7 +354,7 @@ export default function Imports() {
           </div>
           <div className="import-stat">
             <small>Taux de réussite</small>
-            <b>{stats.taux_reussite ?? "—"} <em style={{ fontSize: 13, fontStyle: "normal", color: "var(--faint)" }}>%</em></b>
+            <b>{stats.taux_reussite ?? "-"} <em style={{ fontSize: 13, fontStyle: "normal", color: "var(--faint)" }}>%</em></b>
             <span>rapport lignes valides / reçues</span>
           </div>
         </div>
@@ -453,7 +453,7 @@ export default function Imports() {
                         <span>{CHAMPS[cle].label}{CHAMPS[cle].requis && <b className="req">*</b>}</span>
                         <span className="faint" style={{ textAlign: "center" }}>→</span>
                         <select value={mapping[cle] || ""} onChange={(e) => changerMapping(cle, e.target.value)} aria-label={`Mapper ${CHAMPS[cle].label}`}>
-                          <option value="">— Ignorer ce champ —</option>
+                          <option value="">- Ignorer ce champ -</option>
                           {(analysis.headers || []).map((h) => <option key={h} value={h}>{h}</option>)}
                         </select>
                       </div>
@@ -471,12 +471,12 @@ export default function Imports() {
                               <tr key={i}>
                                 <td>{l.ligne}</td>
                                 <td><Badge tone={PREVIEW_TONE[l.statut] || "gray"}>{PREVIEW_LABEL[l.statut] || l.statut}</Badge></td>
-                                <td className="mono">{l.ref || "—"}</td>
-                                <td>{l.produit || "—"}</td>
-                                <td>{l.region || "—"}</td>
-                                <td>{l.jour ? dateFR(l.jour) : "—"}</td>
-                                <td className="num">{l.montant ? fmt(l.montant) : "—"}</td>
-                                <td>{l.motif || "—"}</td>
+                                <td className="mono">{l.ref || "-"}</td>
+                                <td>{l.produit || "-"}</td>
+                                <td>{l.region || "-"}</td>
+                                <td>{l.jour ? dateFR(l.jour) : "-"}</td>
+                                <td className="num">{l.montant ? fmt(l.montant) : "-"}</td>
+                                <td>{l.motif || "-"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -638,7 +638,7 @@ export default function Imports() {
                       <td className="num">{fmt(r.doublons)}</td>
                       <td className="num" style={{ color: r.rejets ? "var(--red)" : undefined }}>{fmt(r.rejets)}</td>
                       <td><Badge tone={r.annule ? "gray" : STATUT_TONE[r.statut] || "gray"}>{r.annule ? "Annulé" : r.statut}</Badge></td>
-                      <td><span className="faint" style={{ fontSize: 10 }}>{r.user_login || "—"}</span></td>
+                      <td><span className="faint" style={{ fontSize: 10 }}>{r.user_login || "-"}</span></td>
                       <td>
                         <div className="import-actions">
                           <button className="icon-btn" title="Voir le détail" onClick={() => ouvrirDetail(r.id)}><VisibilityIcon /></button>
@@ -680,11 +680,11 @@ export default function Imports() {
               <div><small>Statut</small><b><Badge tone={detail.data.import.annule ? "gray" : STATUT_TONE[detail.data.import.statut] || "gray"}>{detail.data.import.annule ? "Annulé" : detail.data.import.statut}</Badge></b></div>
               <div><small>Type / source</small><b>{detail.data.import.type} · {detail.data.import.source}</b></div>
               <div><small>Date du lot</small><b>{dateFR(detail.data.import.jour)}</b></div>
-              <div><small>Auteur</small><b>{detail.data.import.user_login || "—"}</b></div>
+              <div><small>Auteur</small><b>{detail.data.import.user_login || "-"}</b></div>
               <div><small>Lignes reçues</small><b>{fmt(detail.data.import.lignes_recues)}</b></div>
               <div><small>Intégrées / MAJ</small><b>{fmt(detail.data.import.lignes_integrees)} / {fmt(detail.data.import.mises_a_jour)}</b></div>
               <div><small>Rejets / doublons</small><b>{fmt(detail.data.import.rejets)} / {fmt(detail.data.import.doublons)}</b></div>
-              <div><small>Empreinte</small><b className="mono">{detail.data.import.hash_fichier || "—"}</b></div>
+              <div><small>Empreinte</small><b className="mono">{detail.data.import.hash_fichier || "-"}</b></div>
             </div>
             <div className="table-wrap">
               <table className="grid">
@@ -693,9 +693,9 @@ export default function Imports() {
                   {detail.data.lignes.slice(0, 200).map((l) => (
                     <tr key={l.id}>
                       <td>{l.ligne}</td>
-                      <td className="mono" style={{ fontSize: 10.5 }}>{l.ref || "—"}</td>
+                      <td className="mono" style={{ fontSize: 10.5 }}>{l.ref || "-"}</td>
                       <td><Badge tone={PREVIEW_TONE[l.statut] || "gray"}>{PREVIEW_LABEL[l.statut] || l.statut}</Badge></td>
-                      <td>{l.motif || "—"}</td>
+                      <td>{l.motif || "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -823,7 +823,7 @@ export default function Imports() {
                         <label>{c.label}{c.requis && <b className="req">*</b>}</label>
                         {c.type === "select" ? (
                           <select value={ligne[c.cle] ?? ""} onChange={(e) => majLigne(i, c.cle, e.target.value)} required={c.requis}>
-                            <option value="">— Choisir —</option>
+                            <option value="">- Choisir -</option>
                             {(c.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
                           </select>
                         ) : c.type === "textarea" ? (

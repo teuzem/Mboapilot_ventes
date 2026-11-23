@@ -119,6 +119,16 @@ def migrer():
         derniere_activite TEXT DEFAULT (datetime('now')),
         active INTEGER DEFAULT 1
     )""")
+    colonnes = {r[1] for r in c.execute("PRAGMA table_info(users)")}
+    for col, ddl in [
+        ("prenom", "TEXT"), ("poste", "TEXT"), ("organisation", "TEXT"),
+        ("bio", "TEXT"), ("avatar_url", "TEXT"), ("langue", "TEXT DEFAULT 'fr'"),
+        ("fuseau", "TEXT DEFAULT 'Africa/Douala'"),
+        ("notif_email", "INTEGER DEFAULT 1"), ("notif_push", "INTEGER DEFAULT 1"),
+        ("email_verifie", "INTEGER DEFAULT 0"),
+    ]:
+        if col not in colonnes:
+            c.execute("ALTER TABLE users ADD COLUMN " + col + " " + ddl)
     c.commit()
     c.close()
 

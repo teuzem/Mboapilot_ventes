@@ -4,6 +4,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CloudSyncIcon from "@mui/icons-material/CloudSync";
+import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import GroupIcon from "@mui/icons-material/Group";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -26,6 +27,7 @@ const SECTIONS = [
       { to: "/app/saisie", label: "Saisie vente", icon: <PointOfSaleIcon />, perm: "sales.write" },
       { to: "/app/imports", label: "Collecte & imports", icon: <CloudUploadIcon />, perm: "imports.read" },
       { to: "/app/connecteurs", label: "Connecteurs & ETL", icon: <CloudSyncIcon />, perm: "imports.write" },
+      { to: "/app/fichiers", label: "Mes fichiers Excel", icon: <InsertDriveFileIcon />, perm: "imports.write" },
     ],
   },
   {

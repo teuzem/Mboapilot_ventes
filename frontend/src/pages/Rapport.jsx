@@ -16,7 +16,7 @@ import { PageHead, Spinner, Toast } from "../components";
 const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 function periodeLisible(debut, fin) {
-  if (!debut || !fin) return "—";
+  if (!debut || !fin) return "-";
   const d = new Date(debut + "T00:00:00");
   const f = new Date(fin + "T00:00:00");
   if (Number.isNaN(d.getTime()) || Number.isNaN(f.getTime())) return `${debut} → ${fin}`;
@@ -148,7 +148,7 @@ export default function Rapport() {
                 <div className="report-kpi">
                   <small>Marge brute estimée</small>
                   <b>{fmt(marge)} <span style={{ fontSize: 9 }}>FCFA</span></b>
-                  <span>{r.ca ? `${Math.round((marge / r.ca) * 100)} % du CA` : "—"}</span>
+                  <span>{r.ca ? `${Math.round((marge / r.ca) * 100)} % du CA` : "-"}</span>
                 </div>
                 <div className="report-kpi">
                   <small>Régions actives</small>
@@ -181,7 +181,7 @@ export default function Rapport() {
                           <td>{t.produit}</td>
                           <td className="num">{fmt(t.q)}</td>
                           <td className="num">{fmt(t.ca)}</td>
-                          <td className="num">{r.ca ? `${((t.ca / r.ca) * 100).toFixed(1)} %` : "—"}</td>
+                          <td className="num">{r.ca ? `${((t.ca / r.ca) * 100).toFixed(1)} %` : "-"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -223,7 +223,7 @@ export default function Rapport() {
                         <td><b>{x.famille}</b></td>
                         <td className="num">{fmt(x.ca)}</td>
                         <td className="num">{fmt(x.mg)}</td>
-                        <td className="num">{x.ca ? `${((x.mg / x.ca) * 100).toFixed(1)} %` : "—"}</td>
+                        <td className="num">{x.ca ? `${((x.mg / x.ca) * 100).toFixed(1)} %` : "-"}</td>
                         <td><div className="report-bar"><i style={{ width: `${totalFamilles ? Math.max(2, (x.ca / totalFamilles) * 100) : 0}%` }} /></div></td>
                       </tr>
                     ))}

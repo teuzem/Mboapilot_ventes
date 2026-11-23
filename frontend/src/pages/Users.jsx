@@ -306,7 +306,7 @@ export default function Users() {
                       <td key={r}>
                         {(rolesMatrice[r] || []).includes(code)
                           ? <CheckCircleIcon className="check" titleAccess="Autorisé" />
-                          : <span className="dash">—</span>}
+                          : <span className="dash">-</span>}
                       </td>
                     ))}
                   </tr>

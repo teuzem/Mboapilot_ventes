@@ -52,7 +52,7 @@ const COULEURS_CANAL = { POS: "#0A2540", Agence: "#635BFF", "E-commerce": "#00D4
 const COULEURS_FAMILLE = ["#635BFF", "#00C07F", "#00D4FF", "#FFC247", "#FF5996", "#8B84FF", "#C2C9D4"];
 
 function Delta({ value, suffix = " %" }) {
-  if (value === null || value === undefined) return <span className="faint">—</span>;
+  if (value === null || value === undefined) return <span className="faint">-</span>;
   const positif = Number(value) >= 0;
   return (
     <span className={positif ? "up" : "down"}>
@@ -286,7 +286,7 @@ export default function Dashboard() {
                 <span className="dash-ix"><AccountBalanceWalletIcon /></span>
                 <small>Marge brute</small>
                 <b>{fmt(k?.marge)} <em>FCFA</em></b>
-                <span>Taux {k?.tauxMarge ?? "—"} % · <Delta value={k?.var_marge} /></span>
+                <span>Taux {k?.tauxMarge ?? "-"} % · <Delta value={k?.var_marge} /></span>
                 <div className="meter-line"><i style={{ width: `${Math.min(100, Math.max(0, k?.tauxMarge || 0) * 3)}%` }} /></div>
               </div>
 
@@ -463,7 +463,7 @@ export default function Dashboard() {
                       <div className={"dash-region" + (r.pct !== null && r.pct < 90 ? " warn" : "")} key={r.region}>
                         <span title={r.region}>{r.region}</span>
                         <div className="pbar"><i style={{ width: `${Math.min(100, Math.max(0, r.pct || 0))}%` }} /></div>
-                        <em>{r.pct === null ? "—" : `${r.pct} %`}</em>
+                        <em>{r.pct === null ? "-" : `${r.pct} %`}</em>
                       </div>
                     ))}
                   </div>

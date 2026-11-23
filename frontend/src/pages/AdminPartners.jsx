@@ -159,7 +159,7 @@ export default function AdminPartners() {
         <div className="admin-stats">
           <div className="admin-stat">
             <small>Total réseau</small>
-            <b>{data?.total ?? "—"}</b>
+            <b>{data?.total ?? "-"}</b>
             <span>dossiers partenaires</span>
           </div>
           <div className="admin-stat warn">
@@ -174,7 +174,7 @@ export default function AdminPartners() {
           </div>
           <div className="admin-stat">
             <small>Secteurs</small>
-            <b>{data ? new Set(data.partenaires.map((p) => p.secteur).filter(Boolean)).size : "—"}</b>
+            <b>{data ? new Set(data.partenaires.map((p) => p.secteur).filter(Boolean)).size : "-"}</b>
             <span>représentés dans le réseau</span>
           </div>
         </div>
@@ -213,7 +213,7 @@ export default function AdminPartners() {
         ) : (
           <div className="partner-admin-list">
             {liste.map((p) => {
-              const demo = DEMO[p.demo_statut] || ["—", "gray"];
+              const demo = DEMO[p.demo_statut] || ["-", "gray"];
               return (
                 <article className="partner-admin-card" key={p.id}>
                   <div className="pac-logo">
@@ -229,8 +229,8 @@ export default function AdminPartners() {
                     <div className="pac-meta">
                       <span>{initiales(p.contact_nom)} {p.contact_nom}</span>
                       <span>{p.email_masque || p.email}</span>
-                      <span><CategoryIcon /> {p.secteur || "—"}</span>
-                      <span><PlaceIcon /> {p.region || "—"}</span>
+                      <span><CategoryIcon /> {p.secteur || "-"}</span>
+                      <span><PlaceIcon /> {p.region || "-"}</span>
                       <span><EventAvailableIcon /> {p.demo_date ? `${dateFR(p.demo_date)} · ${p.demo_creneau}` : "démo non planifiée"}</span>
                     </div>
                     {p.notes_admin && <div className="partner-notes-preview">Note : {p.notes_admin}</div>}
@@ -293,8 +293,8 @@ export default function AdminPartners() {
                 <p>{choix.contact_nom} · {choix.email_masque || choix.email} · {choix.telephone || "téléphone non renseigné"}</p>
                 <div className="row-actions" style={{ marginTop: 6 }}>
                   <Badge tone={TONE[choix.statut]}>{LABEL[choix.statut]}</Badge>
-                  <Badge tone={(DEMO[choix.demo_statut] || ["", "gray"])[1]}>{(DEMO[choix.demo_statut] || ["Démo —"])[0]}</Badge>
-                  <Badge tone="gray">{choix.secteur || "Secteur —"}</Badge>
+                  <Badge tone={(DEMO[choix.demo_statut] || ["", "gray"])[1]}>{(DEMO[choix.demo_statut] || ["Démo -"])[0]}</Badge>
+                  <Badge tone="gray">{choix.secteur || "Secteur -"}</Badge>
                 </div>
               </div>
               {choix.site_web && (
@@ -305,12 +305,12 @@ export default function AdminPartners() {
             </div>
 
             <div className="detail-dl">
-              <div><small>Région</small><b>{choix.region || "—"}</b></div>
-              <div><small>Taille</small><b>{choix.taille || "—"}</b></div>
-              <div><small>Date de démo</small><b>{choix.demo_date ? `${dateFR(choix.demo_date)} · ${choix.demo_creneau}` : "—"}</b></div>
+              <div><small>Région</small><b>{choix.region || "-"}</b></div>
+              <div><small>Taille</small><b>{choix.taille || "-"}</b></div>
+              <div><small>Date de démo</small><b>{choix.demo_date ? `${dateFR(choix.demo_date)} · ${choix.demo_creneau}` : "-"}</b></div>
               <div><small>Inscrit le</small><b>{dateFR(choix.cree_le, true)}</b></div>
               <div><small>Dernière mise à jour</small><b>{dateFR(choix.maj_le, true)}</b></div>
-              <div><small>Validation</small><b>{choix.valide_le ? dateFR(choix.valide_le, true) : "—"}</b></div>
+              <div><small>Validation</small><b>{choix.valide_le ? dateFR(choix.valide_le, true) : "-"}</b></div>
             </div>
 
             {choix.message && <div className="detail-block"><b>Message du partenaire</b>{choix.message}</div>}

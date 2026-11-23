@@ -191,9 +191,9 @@ export default function Audit() {
                           <td className="audit-date">{dateFR(l.horo, true)}</td>
                           <td className="audit-actor">{l.acteur}</td>
                           <td><span className="audit-action">{l.action}</span></td>
-                          <td className="audit-resource">{l.ressource || "—"}</td>
-                          <td><span className={"audit-result " + tone}>{l.resultat || "—"}</span></td>
-                          <td className="audit-details">{l.details || "—"}</td>
+                          <td className="audit-resource">{l.ressource || "-"}</td>
+                          <td><span className={"audit-result " + tone}>{l.resultat || "-"}</span></td>
+                          <td className="audit-details">{l.details || "-"}</td>
                           <td className="audit-details" style={{ fontFamily: "Consolas, monospace" }}>{String(l.empreinte || "").slice(0, 12)}…</td>
                           <td>
                             <button className="icon-btn" title="Voir le détail" onClick={() => setDetail(l)}><VisibilityIcon /></button>
@@ -229,13 +229,13 @@ export default function Audit() {
               <div><small>Acteur</small><b>{detail.acteur}</b></div>
               <div><small>Action</small><b><span className="audit-action">{detail.action}</span></b></div>
               <div><small>Résultat</small><b><span className={"audit-result " + toneResultat(detail.resultat)}>{detail.resultat}</span></b></div>
-              <div><small>Ressource</small><b>{detail.ressource || "—"}</b></div>
-              <div><small>Adresse IP</small><b className="mono">{detail.ip || "—"}</b></div>
+              <div><small>Ressource</small><b>{detail.ressource || "-"}</b></div>
+              <div><small>Adresse IP</small><b className="mono">{detail.ip || "-"}</b></div>
               <div><small>Version du schéma</small><b>v{detail.version || 1}</b></div>
               <div><small>Entrée</small><b>#{detail.id}</b></div>
             </div>
             <div className="detail-block"><b>Détails</b>{detail.details || "Aucun détail complémentaire."}</div>
-            <div className="detail-block"><b>Empreinte SHA-256</b><span className="mono" style={{ fontSize: 10.5, overflowWrap: "anywhere" }}>{detail.empreinte || "—"}</span></div>
+            <div className="detail-block"><b>Empreinte SHA-256</b><span className="mono" style={{ fontSize: 10.5, overflowWrap: "anywhere" }}>{detail.empreinte || "-"}</span></div>
             <div className="audit-note"><ShieldIcon /> L'empreinte couvre l'entrée précédente, l'horodatage, l'acteur, l'IP, l'action, la ressource, le résultat et les détails. Modifier un seul caractère invalide la chaîne.</div>
           </div>
         )}

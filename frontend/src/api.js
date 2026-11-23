@@ -1,4 +1,4 @@
-/* MboaPilot V2 — client API same-origin, CSRF, FormData, téléchargements. */
+/* MboaPilot V2 - client API same-origin, CSRF, FormData, téléchargements. */
 let csrfToken = "";
 let csrfPromise = null;
 
@@ -125,13 +125,13 @@ export function fmtCompact(n) {
 }
 
 export const pct = (v, signe = true) => {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "-";
   const n = Number(v);
   return `${signe && n > 0 ? "+" : ""}${nf2.format(n)} %`;
 };
 
 export function dateFR(value, avecHeure = false) {
-  if (!value) return "—";
+  if (!value) return "-";
   const d = new Date(String(value).replace(" ", "T") + (String(value).includes("Z") ? "" : "Z"));
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString("fr-FR", {

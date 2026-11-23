@@ -305,9 +305,9 @@ export default function Saisie() {
             <div className="sale-lines">
               <div><span>{f.produit || "Produit"}</span><b>{qte} × {fmt(prix)} FCFA</b></div>
               <div><span>Remise appliquée</span><b>{remise || 0} %</b></div>
-              <div><span>Canal / région</span><b>{f.canal} · {f.region || "—"}</b></div>
+              <div><span>Canal / région</span><b>{f.canal} · {f.region || "-"}</b></div>
               <div><span>Marge brute estimée</span><b>{fmt(marge)} FCFA</b></div>
-              <div><span>Taux de marge</span><b>{taux ? `${taux.toFixed(1)} %` : "—"}</b></div>
+              <div><span>Taux de marge</span><b>{taux ? `${taux.toFixed(1)} %` : "-"}</b></div>
             </div>
             <button className="btn btn-success btn-block" onClick={envoyer} disabled={envoi === "vente"}>
               {envoi === "vente" ? <><Spinner inline label="" /> Enregistrement…</> : <><CheckCircleIcon /> Valider l'encaissement</>}

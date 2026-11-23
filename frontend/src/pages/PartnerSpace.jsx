@@ -205,7 +205,7 @@ export default function PartnerSpace() {
               <div className="partner-kpis">
                 <div><small>Logo</small><b>{p.logo_url ? "En ligne" : "À fournir"}</b><span>{p.statut === "valide" ? "visible sur l'accueil" : "publié après validation"}</span></div>
                 <div><small>Démo</small><b>{DEMO_LABEL[p.demo_statut] || p.demo_statut}</b><span>{p.demo_date ? `${dateFR(p.demo_date)} · ${p.demo_creneau}` : "aucun créneau"}</span></div>
-                <div><small>Suivi privé</small><b>{suivi ? "Actif" : "—"}</b><span>lien unique, sans mot de passe</span></div>
+                <div><small>Suivi privé</small><b>{suivi ? "Actif" : "-"}</b><span>lien unique, sans mot de passe</span></div>
               </div>
               <div className="cols-2 partner-overview-cols">
                 <div className="panel">
@@ -284,7 +284,7 @@ export default function PartnerSpace() {
                 <p className="hint">Sur vos propres données ou sur le jeu de démonstration. Un expert MboaPilot vous accompagne.</p>
                 <div className="demo-current">
                   <div><small>Date</small><b>{p.demo_date ? dateFR(p.demo_date) : "À définir"}</b></div>
-                  <div><small>Créneau</small><b>{p.demo_creneau || "—"}</b></div>
+                  <div><small>Créneau</small><b>{p.demo_creneau || "-"}</b></div>
                   <Badge tone={p.demo_statut === "confirme" ? "green" : p.demo_statut === "annule" ? "red" : "amber"}>{DEMO_LABEL[p.demo_statut] || p.demo_statut}</Badge>
                 </div>
                 <form onSubmit={replanifier} className="demo-form">
@@ -334,7 +334,7 @@ export default function PartnerSpace() {
                   <table className="grid"><tbody>
                     <tr><td>Membre depuis</td><td className="num">{dateFR(p.cree_le)}</td></tr>
                     <tr><td>Dernière mise à jour</td><td className="num">{dateFR(p.maj_le, true)}</td></tr>
-                    <tr><td>Validation</td><td className="num">{p.valide_le ? dateFR(p.valide_le) : "—"}</td></tr>
+                    <tr><td>Validation</td><td className="num">{p.valide_le ? dateFR(p.valide_le) : "-"}</td></tr>
                     <tr><td>Statut du logo</td><td className="num">{p.statut === "valide" ? "Publié" : "En attente"}</td></tr>
                   </tbody></table>
                 </div>
