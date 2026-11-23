@@ -12,6 +12,8 @@ venv/
 db.sqlite3
 staticfiles/
 media/
+uploads/imports/
+uploads/avatars/
 *.db-shm
 *.db-wal
 
