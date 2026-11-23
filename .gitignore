@@ -6,11 +6,14 @@ venv/
 
 # Environnement et secrets
 .env
+.mboa_secret
 
 # Base de données et fichiers générés
 db.sqlite3
 staticfiles/
 media/
+*.db-shm
+*.db-wal
 
 # Éditeurs / OS
 .idea/

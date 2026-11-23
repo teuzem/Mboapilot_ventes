@@ -1,0 +1,12 @@
+/* ============================================================
+   MboaPilot V2 — feuille de style produit.
+   Découpée en modules pour rester maintenable ; Vite inline
+   les @import au build. Tokens hérités de theme.css :
+   encre #0A2540 · brand #635BFF · fond #F6F9FC.
+   ============================================================ */
+@import "./styles/v2-core.css";
+@import "./styles/v2-landing.css";
+@import "./styles/v2-auth.css";
+@import "./styles/v2-partner.css";
+@import "./styles/v2-app.css";
+@import "./styles/v2-studio.css";

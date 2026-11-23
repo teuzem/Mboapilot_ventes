@@ -1,118 +1,264 @@
 # -*- coding: utf-8 -*-
-"""Tests API MboaPilot (React + Flask, auth simple Sprint 1)."""
+"""Recette API MboaPilot V2 (auth MFA TOTP, dashboard, imports, formulaires,
+partenaires, exports, audit chaîné, habilitations)."""
+import io
+import json
 import sqlite3
+import time
+from datetime import date, timedelta
+
 import app
 
 app.app.config["TESTING"] = True
 ok = []
+DB = "sales.db"
 
-def check(nom, cond):
-    print(("PASS " if cond else "FAIL ") + nom)
+
+def check(nom, cond, detail=""):
+    print(("PASS " if cond else "FAIL ") + nom + (f" · {detail}" if detail and not cond else ""))
     assert cond, nom
     ok.append(nom)
 
-a = app.app.test_client()
 
-# Vitrine publique
+class Client:
+    """Client de test qui gère automatiquement le jeton CSRF."""
+
+    def __init__(self, base=None):
+        self.c = base or app.app.test_client()
+        self.token = self.c.get("/api/auth/csrf").get_json()["csrf"]
+
+    def _h(self, headers):
+        return {"X-CSRF-Token": self.token, **(headers or {})}
+
+    def get(self, url, **kw):
+        return self.c.get(url, **kw)
+
+    def post(self, url, **kw):
+        return self.c.post(url, headers=self._h(kw.pop("headers", None)), **kw)
+
+    def delete(self, url, **kw):
+        return self.c.delete(url, headers=self._h(kw.pop("headers", None)), **kw)
+
+
+def connecte(login, pwd):
+    c = Client()
+    r = c.post("/api/auth/login", json={"login": login, "password": pwd})
+    assert r.status_code == 200, (login, r.status_code, r.get_json())
+    j = r.get_json()
+    assert j.get("mfa_required") is True and j.get("code_demo"), ("défi MFA", j)
+    r = c.post("/api/auth/mfa-confirmer", json={"code": j["code_demo"]})
+    assert r.status_code == 200, (login, "MFA", r.status_code, r.get_json())
+    return c
+
+
+def nettoyer(refs, imports=(), formulaire=None):
+    cx = sqlite3.connect(DB)
+    for ref in refs:
+        cx.execute("DELETE FROM sales WHERE ref=?", (ref,))
+    for i in imports:
+        cx.execute("DELETE FROM import_rows WHERE import_id=?", (i,))
+        cx.execute("DELETE FROM sales WHERE import_id=?", (i,))
+        cx.execute("DELETE FROM form_submissions WHERE import_id=?", (i,))
+        cx.execute("DELETE FROM imports WHERE id=?", (i,))
+    if formulaire:
+        cx.execute("DELETE FROM form_templates WHERE id=?", (formulaire,))
+    cx.execute("UPDATE users SET echecs=0, bloque_jusqua=NULL, bloque_def=0 WHERE login='commercial'")
+    cx.execute("UPDATE users SET echecs=0, bloque_jusqua=NULL, bloque_def=0 WHERE login='demo'")
+    cx.execute("DELETE FROM users WHERE login='testeur_v2'")
+    cx.commit()
+    cx.close()
+
+
+a = Client()
+
+# ---------- Vitrine publique & SPA ----------
+h = a.get("/api/health").get_json()
+check("health V2", h["ok"] is True and h["version"] == "2.0" and h["lignes"] > 1000)
 v = a.get("/api/vitrine/stats").get_json()
-check("vitrine sites live", v["sites"]["regions"] == 10 and v["sites"]["pdv"] >= 15 and v["sites"]["canaux"] == 3)
-check("vitrine marge", v["kpis"]["marge30"] > 0 and v["kpis"]["tauxMarge"])
-check("vitrine nb>40000", v["nb"] > 40000)
-check("vitrine serie30", len(v["serie30"]) >= 28)
-check("vitrine regions", len(v["topRegions"]) == 5)
-check("vitrine canaux", len(v["canaux"]) == 3)
-check("vitrine kpis", v["kpis"]["ca30"] > 0 and v["kpis"]["objPct"] is not None)
-check("vitrine regions nb", v["regions"] == 10)
-check("vitrine serieN1", len(v["serieN1"]) >= 28)
-
-# SPA servie
-for url in ["/", "/tarifs", "/login", "/app"]:
+check("vitrine stats", v["kpis"]["ca30"] > 0 and v["regions"] == 10 and len(v["serie30"]) >= 20)
+part = a.get("/api/partenaires/publics").get_json()
+check("partenaires publics", part["total"] >= 1 and all(x["logo"] for x in part["partenaires"]))
+for url in ["/", "/tarifs", "/login", "/app", "/partenaires", "/securite"]:
     r = a.get(url)
-    check(f"spa {url} -> index", r.status_code == 200 and b'<div id="root">' in r.data)
-check("asset js", a.get("/assets/").status_code in (404, 403, 200))
-check("img locale", a.get("/img/hero-marche.jpg").status_code == 200)
-check("logo", a.get("/logo.svg").status_code == 200)
+    check(f"SPA {url}", r.status_code == 200 and b'<div id="root">' in r.data)
+check("logo statique", a.get("/logo.svg").status_code == 200)
 
-# Contact
+# ---------- Contact & CSRF ----------
 r = a.post("/api/contact", json={"nom": "Jury Test", "entreprise": "J SARL",
-                                 "email": "jury@test.cm", "message": "Demo svp"})
+                                 "email": "jury@test.cm", "message": "Démo V2 svp"})
 check("contact ok", r.status_code == 200)
-r = a.post("/api/contact", json={"nom": "x", "email": "bad", "message": "y"})
-check("contact invalide 400", r.status_code == 400)
+check("contact invalide", a.post("/api/contact", json={"nom": "x", "email": "bad", "message": "y"}).status_code == 400)
+sans = app.app.test_client()
+r = sans.post("/api/contact", json={"nom": "X", "email": "x@y.cm", "message": "z"})
+check("CSRF exigé", r.status_code == 400 and r.get_json()["code"] == "csrf")
 
-# Auth : 401 sans session
-check("kpis 401 anonyme", a.get("/api/kpis?periode=30").status_code == 401)
-check("me 401", a.get("/api/auth/me").status_code == 401)
+# ---------- Auth ----------
+check("me anonyme 401", a.get("/api/auth/me").status_code == 401)
+check("dashboard anonyme 401", a.get("/api/dashboard").status_code == 401)
+mauvais = Client()
+r = mauvais.post("/api/auth/login", json={"login": "commercial", "password": "Totalement-Faux-2026!"})
+check("login mauvais mdp 401", r.status_code == 401)
+r = mauvais.post("/api/auth/login", json={"login": "commercial", "password": "MboaPilot-Com-2026!"})
+j = r.get_json()
+check("défi TOTP", r.status_code == 200 and j["mode"] == "totp" and len(j["code_demo"]) == 6)
+r = mauvais.post("/api/auth/mfa-confirmer", json={"code": "000000"})
+check("MFA faux code 401", r.status_code == 401)
+check("état MFA accessible", mauvais.get("/api/auth/mfa/etat").get_json().get("mfa_required") is True)
 
-# Login commercial (sans MFA)
-r = a.post("/api/auth/login", json={"login": "commercial", "password": "MboaPilot-Com-2026!"})
-check("login commercial", r.status_code == 200 and r.get_json()["user"]["role"] == "Commercial")
-k = a.get("/api/kpis?periode=365").get_json()
-check("kpis objectif", k["objectif"] and k["var_obj"] is not None)
-check("kpis marge", k["marge"] > 0 and k["tauxMarge"] and k["var_marge"] is not None)
-check("cloisonnement", set(x["region"] for x in a.get("/api/repartitions?periode=365").get_json()["regions"]) == {"Littoral"})
-se = a.get("/api/serie?periode=30").get_json()
-check("serie cible", len(se["points"]) >= 30 and se["cible_jour"] > 0)
-check("serie n1", len(se["n1"]) >= 28 and all("ca" in x for x in se["n1"]))
-mm = a.get("/api/mensuel?region=Littoral").get_json()
-check("mensuel 12 mois", len(mm) == 12 and all({"mois", "n", "marge", "n1"} <= set(x) for x in mm))
-check("mensuel valeurs", sum(x["n"] for x in mm) > 0)
-rp = a.get("/api/repartitions?periode=365").get_json()
-check("familles marge", len(rp["familles"]) >= 5 and all("mg" in x for x in rp["familles"]))
-rc = a.get("/api/recit?periode=365").get_json()
-check("recit >=3", len(rc) >= 3)
-check("export csv", a.get("/api/export/csv?periode=30").status_code == 200)
-check("commercial interdit users", a.get("/api/users").status_code == 403)
-p = a.post("/api/pos-push").get_json()
-check("pos push", p.get("ok") is True)
-check("logout", a.post("/api/auth/logout").status_code == 200)
-check("me apres logout 401", a.get("/api/auth/me").status_code == 401)
+com = connecte("commercial", "MboaPilot-Com-2026!")
+me = com.get("/api/auth/me").get_json()
+check("session commercial", me["role"] == "Commercial" and me["perimetre"] == "Littoral" and me["mfa"] is True)
+check("droits commerciaux", "sales.write" in me["permissions"] and "users.manage" not in me["permissions"])
+check("commercial users 403", com.get("/api/users").status_code == 403)
+check("commercial audit 403", com.get("/api/audit").status_code == 403)
 
-# Login manager (auth simple, sans MFA)
-m = app.app.test_client()
-r = m.post("/api/auth/login", json={"login": "manager", "password": "MboaPilot-Mgr-2026!"})
-check("login manager direct", r.status_code == 200 and r.get_json()["user"]["perimetre"] == "Centre")
-check("dashboard manager", m.get("/api/kpis?periode=30").status_code == 200)
-check("audit manager", m.get("/api/audit").status_code == 200)
-check("rapport", m.get("/api/rapport").status_code == 200)
-check("imports list", m.get("/api/imports").status_code == 200)
+# ---------- Dashboard & filtres ----------
+d = com.get("/api/dashboard?periode=365").get_json()
+check("dashboard kpis", d["kpis"]["ca"] > 0 and d["kpis"]["nb"] > 0 and "tauxMarge" in d["kpis"])
+check("dashboard série", len(d["serie"]["points"]) >= 10 and d["serie"]["cible_jour"] > 0)
+check("dashboard répartitions", len(d["repartitions"]["regions"]) == 1
+      and d["repartitions"]["regions"][0]["region"] == "Littoral")
+check("dashboard mensuel", len(d["mensuel"]) == 12)
+check("dashboard récit/alertes", len(d["recit"]) >= 2 and len(d["alertes"]) >= 1)
+check("dashboard récentes", isinstance(d["recentes"], list))
+check("dashboard permissions", "sales.write" in d["permissions"])
+check("dashboard filtre canal", com.get("/api/dashboard?periode=90&canal=POS").status_code == 200)
+f = com.get("/api/filtres").get_json()
+check("filtres produits", len(f["produits"]) >= 10 and all({"produit", "famille", "prix"} <= set(x) for x in f["produits"]))
+check("live lecture", com.get("/api/live").get_json()["caJour"] is not None)
 
-# Admin : users
-ad = app.app.test_client()
-r = ad.post("/api/auth/login", json={"login": "admin", "password": "MboaPilot-Admin-2026!"})
-check("login admin direct", r.status_code == 200)
+# ---------- Saisie manuelle & POS ----------
+p0 = f["produits"][0]
+jour = (date.today() - timedelta(days=3)).isoformat()
+r = com.post("/api/ventes-manuelle", json={
+    "produit": p0["produit"], "qte": 2, "prix_unit": p0["prix"],
+    "canal": "POS", "region": "Nord", "ville": "Douala",
+    "point_vente": "Test V2", "jour": jour,
+})
+j = r.get_json()
+check("saisie manuelle ok", r.status_code == 200 and j["ok"] is True)
+check("saisie périmètre forcé", j["region"] == "Littoral")
+ref_manuelle = j["ref"]
+cx = sqlite3.connect(DB)
+lg = cx.execute("SELECT region, montant FROM sales WHERE ref=?", (ref_manuelle,)).fetchone()
+cx.close()
+check("saisie montant", lg[0] == "Littoral" and lg[1] == round(2 * p0["prix"]))
+r = com.post("/api/ventes-manuelle", json={"produit": "Produit Inexistant", "qte": 1, "prix_unit": 100})
+check("produit inconnu 400", r.status_code == 400)
+r = com.post("/api/ventes-manuelle", json={"produit": p0["produit"], "qte": 1, "prix_unit": 100, "jour": "2099-01-01"})
+check("date future 400", r.status_code == 400)
+r = com.post("/api/ventes-manuelle", json={"produit": p0["produit"], "qte": 1, "prix_unit": 100, "remise_pct": 80})
+check("remise excessive 400", r.status_code == 400)
+r = com.post("/api/pos-push")
+j = r.get_json()
+check("pos push live", r.status_code == 200 and j.get("ok") is True and j.get("montant", 0) > 0)
+ref_pos = j.get("ref")
+
+# ---------- Exports & rapport ----------
+check("export csv", com.get("/api/export/csv?periode=90").status_code == 200)
+r = com.get("/api/export/xlsx?periode=90")
+check("export xlsx", r.status_code == 200 and r.data[:2] == b"PK")
+rap = com.get("/api/rapport").get_json()
+check("rapport signé", rap["ca"] > 0 and len(rap["emp"]) == 16 and len(rap["top"]) <= 10)
+check("rapport régions", len(rap["regions"]) == 1 and rap["regions"][0]["region"] == "Littoral")
+
+# ---------- Auditeur : lecture seule ----------
+aud = connecte("auditeur", "MboaPilot-Audit-2026!")
+check("auditeur audit autorisé", aud.get("/api/audit").status_code == 200)
+check("auditeur ventes 403", aud.post("/api/ventes-manuelle", json={}).status_code == 403)
+check("auditeur pos 403", aud.post("/api/pos-push").status_code == 403)
+check("auditeur imports write 403", aud.post("/api/imports/analyser").status_code == 403)
+
+# ---------- Manager : imports, formulaires, audit ----------
+mgr = connecte("manager", "MboaPilot-Mgr-2026!")
+check("manager périmètre Centre", mgr.get("/api/auth/me").get_json()["perimetre"] == "Centre")
+check("manager audit", mgr.get("/api/audit").status_code == 200)
+check("chaîne audit intègre", mgr.get("/api/audit/verifier").get_json()["valide"] is True)
+check("imports liste", mgr.get("/api/imports").status_code == 200)
+check("modèle CSV", mgr.get("/api/imports/modele?format=csv").status_code == 200)
+check("modèle XLSX", mgr.get("/api/imports/modele?format=xlsx").status_code == 200)
+
+stamp = str(int(time.time()))
+ref_csv = f"TX-API-CSV-{stamp}"
+csv = ("ref;jour;canal;region;ville;point_vente;vendeur;produit;famille;qte;prix_unit;remise_pct;montant;devise\n"
+       f"{ref_csv};{jour};Agence;Centre;Yaoundé;Test API;Jury;{p0['produit']};{p0['famille']};1;{p0['prix']};0;{p0['prix']};FCFA\n")
+r = mgr.post("/api/imports/analyser", data={
+    "fichier": (io.BytesIO(csv.encode("utf-8")), "recette_v2.csv"), "mode": "ignorer",
+}, content_type="multipart/form-data")
+res = r.get_json()
+check("analyse CSV", r.status_code == 200 and res["resume"]["recues"] == 1 and res["resume"]["integrables"] == 1)
+r = mgr.post("/api/imports/executer", data={
+    "fichier": (io.BytesIO(csv.encode("utf-8")), "recette_v2.csv"),
+    "mapping": json.dumps(res["mapping"]), "mode": "ignorer",
+}, content_type="multipart/form-data")
+ex = r.get_json()
+check("exécution CSV", r.status_code == 200 and ex["ok"] is True and ex["statut"] == "Reussi")
+import_csv = ex.get("import_id")
+check("détail import", mgr.get(f"/api/imports/{import_csv}").status_code == 200)
+
+r = mgr.post("/api/forms", json={
+    "nom": f"Recette {stamp}", "description": "Formulaire de recette automatisée.",
+    "champs": [
+        {"cle": "jour", "label": "Date", "type": "date", "requis": True},
+        {"cle": "canal", "label": "Canal", "type": "select", "requis": True, "options": ["POS", "Agence", "E-commerce"]},
+        {"cle": "region", "label": "Région", "type": "select", "requis": True},
+        {"cle": "produit", "label": "Produit", "type": "text", "requis": True},
+        {"cle": "famille", "label": "Famille", "type": "select", "requis": True},
+        {"cle": "qte", "label": "Quantité", "type": "number", "requis": True},
+        {"cle": "prix_unit", "label": "Prix unitaire", "type": "number", "requis": True},
+    ],
+})
+fj = r.get_json()
+check("création formulaire", r.status_code == 200 and fj.get("ok") is True)
+fid = fj.get("id")
+r = mgr.post(f"/api/forms/{fid}/soumettre", json={"lignes": [{
+    "jour": jour, "canal": "Agence", "region": "Centre", "produit": p0["produit"],
+    "famille": p0["famille"], "qte": 1, "prix_unit": p0["prix"],
+}]})
+sub = r.get_json()
+check("soumission formulaire", r.status_code == 200 and sub["ok"] is True and sub["resume"]["rejets"] == 0)
+import_form = sub.get("import_id")
+check("suppression formulaire", mgr.delete(f"/api/forms/{fid}").status_code == 200)
+
+# ---------- Admin : utilisateurs, matrice, annulation ----------
+ad = connecte("admin", "MboaPilot-Admin-2026!")
 us = ad.get("/api/users").get_json()
-check("users 5 comptes", len(us["users"]) == 5)
-dd = a.get("/api/auth/demo-secrets").get_json()
-check("demo 5 comptes sans secret", len(dd["comptes"]) == 5 and "secret" not in dd["comptes"][0])
+check("liste utilisateurs", len(us["users"]) >= 5)
+mat = ad.get("/api/users/matrice").get_json()
+check("matrice permissions", len(mat["permissions"]) >= 10 and set(mat["roles"]) == {"Admin", "Manager", "Commercial", "Auditeur"})
+r = ad.post("/api/users", json={
+    "action": "creer", "login": "testeur_v2", "nom": "Testeur Recette",
+    "email": "testeur.v2@mboapilot.cm", "role": "Commercial",
+    "perimetre": "Littoral", "pwd": "Recette-V2-2026!",
+})
+check("création utilisateur", r.status_code == 200)
+r = ad.post("/api/users", json={
+    "action": "creer", "login": "testeur_v2", "nom": "Doublon",
+    "email": "testeur.v2@mboapilot.cm", "role": "Commercial",
+    "perimetre": "Littoral", "pwd": "Recette-V2-2026!",
+})
+check("doublon utilisateur 400", r.status_code == 400)
+check("annulation import", ad.post(f"/api/imports/{import_csv}/annuler").status_code == 200)
+check("annulation formulaire-import", ad.post(f"/api/imports/{import_form}/annuler").status_code == 200)
+check("comptes démo", len(ad.get("/api/auth/demo-secrets").get_json()["comptes"]) == 5)
+r = ad.post("/api/users", json={"action": "reset-mfa", "login": "testeur_v2"})
+check("reset MFA", r.status_code == 200)
+check("logout", ad.post("/api/auth/logout").status_code == 200)
+check("me après logout 401", ad.get("/api/auth/me").status_code == 401)
 
-# Lockout
-cx = sqlite3.connect("sales.db")
-cx.execute("UPDATE users SET echecs=0, bloque_jusqua=NULL, bloque_def=0 WHERE login='commercial'")
-cx.commit(); cx.close()
-c3 = app.app.test_client()
+# ---------- Verrouillage ----------
+cx = sqlite3.connect(DB)
+cx.execute("UPDATE users SET echecs=0, bloque_jusqua=NULL, bloque_def=0 WHERE login='demo'")
+cx.commit()
+cx.close()
+brut = Client()
 for _ in range(5):
-    c3.post("/api/auth/login", json={"login": "commercial", "password": "mauvais-12345678!"})
-r = c3.post("/api/auth/login", json={"login": "commercial", "password": "mauvais-12345678!"})
-check("verrouillage 403", r.status_code == 403)
-cx = sqlite3.connect("sales.db")
-cx.execute("UPDATE users SET echecs=0, bloque_jusqua=NULL, bloque_def=0 WHERE login='commercial'")
-cx.commit(); cx.close()
+    brut.post("/api/auth/login", json={"login": "demo", "password": "Mauvais-Mot-2026!"})
+r = brut.post("/api/auth/login", json={"login": "demo", "password": "Mboa-Demo-2026!"})
+check("verrouillage 5 échecs", r.status_code == 403 and r.get_json()["code"] == "locked")
 
-# Reset
-r = a.post("/api/auth/reset-request", json={"login": "commercial"})
-lien = r.get_json()["lien"]
-tok = lien.split("/reset/")[1]
-r = a.post("/api/auth/reset-use", json={"token": tok, "p1": "Faible1!", "p2": "Faible1!"})
-check("reset faible refuse", r.status_code == 400)
-r = a.post("/api/auth/reset-use", json={"token": tok, "p1": "Nouveau-Com-2026!", "p2": "Nouveau-Com-2026!"})
-check("reset fort ok", r.status_code == 200)
-r = a.post("/api/auth/login", json={"login": "commercial", "password": "Nouveau-Com-2026!"})
-check("login nouveau mdp", r.status_code == 200)
-cx = sqlite3.connect("sales.db")
-import werkzeug.security as ws
-cx.execute("UPDATE users SET hash=? WHERE login='commercial'",
-           (ws.generate_password_hash("MboaPilot-Com-2026!", method="pbkdf2:sha256:600000"),))
-cx.commit(); cx.close()
+# ---------- Nettoyage ----------
+nettoyer([ref_manuelle, ref_pos, ref_csv], [import_csv, import_form], fid)
+check("nettoyage recette", True)
 
 print(f"\n{len(ok)} TESTS PASS")

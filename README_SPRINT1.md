@@ -1,47 +1,209 @@
-# MboaPilot — Dossier technique & guide démo (Sprint 1 reconstruit)
+# MboaPilot V2 — dossier technique & guide de démonstration
 
-**Produit : MboaPilot** — *Vos ventes méritent mieux qu'un tableur. Pilotez-les.*
-**Stack : React 19 + Vite + Recharts + Material Icons + Framer Motion · API Flask + SQLite · 100 % hors-ligne après build.**
-Lancement : `LANCER.bat` (ou `python app.py`) → http://127.0.0.1:5000 · Rebuild front : `BUILD_FRONT.bat`.
+**Produit :** MboaPilot — *Vos ventes méritent mieux qu'un tableur. Pilotez-les.*
+**Stack :** React 19 + Vite + Recharts + Material Icons ↔ API Flask + SQLite — 100 % hors-ligne après build.
+**Devise :** FCFA · **Langue :** français · **Périmètre :** 10 régions du Cameroun.
 
-## 1. Positionnement (charte d'équipe, art. 2)
-La valeur = la **décision**, pas la consolidation. Le Sprint 1 officiel (collecte + auth, 32 SP réels) n'était pas démontrable par un manager :
-le périmètre livré ajoute le noyau décisionnel US-301/302 + US-104 (qualité à la source) + noyau US-501 (journal des connexions) ≈ 48 SP.
+---
 
-## 2. Architecture
+## 1. Lancer l'application
+
+```bat
+LANCER.bat
 ```
-app.py               # API JSON /api/* + serving frontend/dist (aucun template serveur)
-frontend/            # React SPA (react-router) : vitrine + espace client
-  src/pages/         # Landing, Features, Pricing, Security, Contact, Legal,
-                     # Login, Mfa, Reset, AppLayout, Dashboard, Imports, Users, Audit, Rapport
-  src/components.jsx # Logo wordmark, header, footer, Reveal, Counter
-  src/theme.css      # Design system flat (tokens esprit Stripe)
-  public/img/        # 7 photos 100 % contexte camerounais (Commons, licences libres, vérifiées)
-sales.db             # sales (46 953 lignes, 699,9 M FCFA, marge brute 196,5 M via cout_unit, 24 mois N/N-1) · users · imports ·
-                     # audit_logs (SHA-256 chaîné) · reset_tokens · messages
-generate_data.py     # régénère le seed Cameroun (10 régions, 17 PDV, 24 produits FCFA, coûts et marges par famille)
-migrate_marge.py     # migration cout_unit sur base existante (conserve users, imports, audit)
-test_api.py          # 43 tests verts : vitrine, auth simple, marges, cloisonnement, lockout, reset…
+
+ou manuellement :
+
+```bat
+pip install -r requirements.txt
+python app.py
 ```
-Sécurité (Sprint 1, volontairement simple) : login + mot de passe ≥ 12 complexes (pbkdf2 600k), sessions 30 min,
-verrou 5→15 min / 10→définitif, reset unique 30 min, RBAC + périmètre **côté serveur**, audit append-only, exports journalisés.
-MFA/TOTP (US-202) et récit génératif : reportés au Sprint 2 par décision de simplification (tracée). Recette : 43 tests verts.
 
-## 3. Design — clone d'esprit Stripe, zéro effet « IA »
-Tokens : encre `#0A2540`, muted `#425466`, brand `#635BFF`, fond blanc / `#F6F9FC`, bordures `#E6EBF1`, Inter, radius 8, ombres douces.
-Wordmark texte simple `mboapilot` (façon Stripe). Sections : bandeau annonce, header flouté, hero mesh + **dashboard live (vraies données Recharts)**,
-logos clients texte, grille modules avec mini-charts réels, split photos, onglets méthode (livrable par étape — pas de steps génériques),
-bandeau sombre sécurité, tarifs, avis, FAQ, CTA mesh, footer 4 colonnes. Dashboard : seuils `ReferenceLine`, deltas N-1/objectif, récit auto, barres vendeurs.
-Photos : marchés et commerces camerounais vérifiés visuellement, mur de 9 vrais logos (MTN, Orange, Guinness, Ecobank, Tradex, Tecno, Turkish, Ethiopian, Nestlé, tous présents au Cameroun, gris au repos et couleurs au survol), aucune image européenne, aucun tiret cadratin dans les textes.
+→ http://127.0.0.1:5000
 
-## 4. Guide démo (10 min, tout en 1 clic, sans MFA)
-1. `/` : hero live (CA 30 j, croissance N-1, panier et marge, objectif), courbe N / N-1 / objectif, métriques statiques définitives.
-2. Page `/login`, panneau **Connexion démo en 1 clic** : `demo` (vue nationale), `commercial` (Littoral, preuve cloisonnement), `manager`, `admin`, `auditeur`.
-3. Dashboard : 5 cartes (CA, marge brute, transactions, panier, transformation), 4 visualisations Recharts, drill vendeur, exports.
-4. Imports : réimporter `data/ventes_agences.csv` → doublons écartés, coûts recalculés.
-5. Imports : réimporter `data/ventes_agences.csv` → doublons écartés, coûts recalculés. 6. 5 mauvais mdp → verrou (puis Admin débloque).
-7. Journal d'audit : tout y est. 8. Rapport → Imprimer-PDF.
+Le frontend est pré-construit dans `frontend/dist`. Pour le reconstruire après une modification :
 
-## 5. Limites connues → Sprint 2
-SFTP-TLS simulé (dépôt local), pas de SMTP (lien affiché), rapport via impression, API e-commerce OAuth2 (US-102),
-relances back-off (US-106), MFA/TOTP (US-202), récit génératif, bcrypt natif si exigé. Vélocité ~48 SP > cible 25-30 : à recadrer en rétrospective.
+```bat
+BUILD_FRONT.bat
+```
+
+Variables d'environnement utiles :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `MBOA_PORT` | `5000` | Port HTTP |
+| `MBOA_DEBUG` | `0` | Mode debug Flask |
+| `MBOA_SECRET` | fichier `.mboa_secret` | Clé de signature des sessions |
+| `MBOA_DEMO` | `1` | Fournit le code TOTP courant pour la démonstration jury |
+| `MBOA_COOKIE_SECURE` | `0` | Cookies `Secure` (à passer à `1` derrière HTTPS) |
+| `MBOA_SESSION_MINUTES` | `30` | Inactivité maximale |
+| `MBOA_SESSION_MAX_HOURS` | `8` | Durée absolue d'une session |
+
+> En production : `MBOA_DEMO=0`, `MBOA_COOKIE_SECURE=1`, HTTPS obligatoire, secret fourni par l'environnement.
+
+---
+
+## 2. Comptes de démonstration
+
+| Identifiant | Mot de passe | Rôle | Périmètre |
+|---|---|---|---|
+| `admin` | `MboaPilot-Admin-2026!` | Admin | National |
+| `manager` | `MboaPilot-Mgr-2026!` | Manager | Centre |
+| `commercial` | `MboaPilot-Com-2026!` | Commercial | Littoral |
+| `auditeur` | `MboaPilot-Audit-2026!` | Auditeur | National |
+| `demo` | `Mboa-Demo-2026!` | Manager | National |
+
+**MFA réelle :** chaque connexion exige un code TOTP à 6 chiffres (RFC 6238, `pyotp`). En mode démo, l'API renvoie `code_demo` avec le défi pour permettre la démonstration sans téléphone. En production (`MBOA_DEMO=0`), ce champ disparaît : il faut scanner le QR code avec Google Authenticator, Microsoft Authenticator ou 1Password.
+
+Les codes de secours sont générés par lot de 10, hachés en base et à usage unique. L'écran **Compte & sécurité** permet de changer le mot de passe, remplacer l'authenticator, régénérer les codes et consulter l'historique de sécurité.
+
+---
+
+## 3. Architecture
+
+```text
+app.py                  # point d'entrée : from mboa import create_app
+mboa/
+  __init__.py           # fabrique Flask, CSRF, expiration de session, en-têtes, serving SPA
+  core.py               # constantes, base SQLite, migrations, audit chaîné, permissions, rate limiting
+  auth.py               # connexion, MFA TOTP, codes de secours, reset, inscription, utilisateurs
+  dashboard.py          # KPI, série, répartitions, récit, alertes, live SSE, vitrine publique
+  imports_studio.py     # analyse CSV/Excel, mapping, exécution, historique, formulaires dynamiques
+  partners.py           # inscription partenaire, connexion MFA, espace, validation admin, logos
+  operations.py         # saisie manuelle, POS live, exports CSV/XLSX, rapport, audit, contact
+frontend/
+  src/pages/            # vitrine, auth, portail partenaires, application, administration
+  src/components.jsx    # header, footer, Reveal, Modal, Toast, Badge, Empty, Spinner…
+  src/api.js            # client fetch CSRF-aware, upload, download, formatters
+  src/auth.jsx          # contexte utilisateur, permissions, logout, refresh
+  src/styles/           # CSS V2 modulaire importé par v2.css
+  dist/                 # build de production servi par Flask
+sales.db                # ventes, users, imports, formulaires, partenaires, audit_logs…
+test_api.py             # recette API V2 (72 tests)
+```
+
+Le backend est découpé en blueprints. Flask sert l'API sous `/api/*` et la SPA React pour toutes les autres routes, y compris en rafraîchissement direct.
+
+---
+
+## 4. Sécurité
+
+- **Mots de passe :** pbkdf2-SHA256 600 000 itérations, politique 12 caractères minimum, contrôle des mots interdits et du login.
+- **MFA TOTP :** secret aléatoire, QR de provisioning, vérification à fenêtre ±1, anti-rejeu, 10 codes de secours hachés.
+- **Sessions :** cookie `HttpOnly`, `SameSite=Lax`, expiration après 30 min d'inactivité et 8 h absolues, version de session incrémentée à chaque changement de rôle, mot de passe, MFA ou désactivation.
+- **CSRF :** jeton obligatoire sur toute écriture API (`POST`, `PUT`, `PATCH`, `DELETE`), généré par `/api/auth/csrf` et injecté par le client React.
+- **Rate limiting :** connexions par IP et par compte, défis MFA, inscriptions, suivi partenaire, contact.
+- **Verrouillage :** 5 échecs → 15 minutes ; 10 échecs → blocage définitif nécessitant un administrateur.
+- **Cloisonnement :** les régions sont filtrées côté serveur selon le rôle et le périmètre, y compris pour la saisie manuelle et les exports.
+- **Audit append-only :** chaque entrée contient l'empreinte SHA-256 de la précédente, l'acteur, l'IP, l'action, la ressource, le résultat et les détails. `/api/audit/verifier` recalcule toute la chaîne depuis `GENESIS`.
+- **En-têtes :** `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, CSP stricte, HSTS derrière HTTPS.
+- **Uploads :** 24 Mo maximum, extensions contrôlées, logos PNG/JPG/WebP limités à 2 Mo et vérifiés par signature.
+
+---
+
+## 5. Tableau de bord
+
+`GET /api/dashboard` accepte `periode` (30, 90, 365, vide), `region`, `canal`, `famille`, `vendeur`, `produit` et renvoie :
+
+- KPI : CA, marge, transactions, panier, objectif N-1 × 1,10, variations ;
+- série journalière N / N-1 / objectif et saisonnalité sur 12 mois ;
+- répartitions régions, canaux, familles, top produits, classement vendeurs ;
+- alertes, récit automatique, ventes récentes, imports récents ;
+- permissions de l'utilisateur et horodatage de mise à jour.
+
+Le flux **SSE** `/api/live/stream` pousse la caisse du jour toutes les 6 secondes. Les écritures POS live sont datées sur la journée de référence du jeu de données pour rester visibles immédiatement.
+
+Fonctions : filtres combinables, export CSV/XLSX, bouton « Vente POS live », drill-down vendeur, liens vers la saisie, les imports, le rapport, les utilisateurs et les partenaires.
+
+---
+
+## 6. Studio d'import & formulaires
+
+Dépôt → analyse → mapping → contrôle → exécution.
+
+- **Formats :** CSV (`;`, `,`, tabulation), `.xlsx`, `.xls` ; encodages UTF-8, UTF-8 BOM, CP1252, Latin-1.
+- **Détection :** délimiteur, encodage, feuille Excel, en-têtes, mapping automatique par synonymes.
+- **Contrôles :** date, région, canal, famille, devise, quantité, prix, remise, cohérence du montant à 2 %.
+- **Déduplication :** référence unique ; mode « ignorer » ou « mettre à jour ».
+- **Traçabilité :** empreinte SHA-256 du fichier, mapping, aperçu, rejets ligne par ligne, import annulable.
+- **Exports :** modèles CSV et XLSX téléchargeables.
+- **Formulaires dynamiques :** création de 1 à 30 champs métier, libellés, types, options, valeurs par défaut, aide ; soumission multi-lignes transformée en lot d'import.
+
+Endpoints principaux : `/api/imports/analyser`, `/api/imports/executer`, `/api/imports`, `/api/imports/<id>`, `/api/imports/<id>/annuler`, `/api/imports/modele`, `/api/forms`, `/api/forms/<id>/soumettre`.
+
+---
+
+## 7. Portail partenaires
+
+1. **Inscription** sur `/partenaires` : entreprise, secteur, contact, email professionnel, mot de passe fort, logo PNG/JPG/WebP (2 Mo), date et créneau de démo, consentement.
+2. **Validation MFA** : mot de passe + code TOTP ou code de secours.
+3. **Suivi** : lien privé `/partenaires/suivi/<token>` accessible sans session.
+4. **Espace partenaire** : statut, créneau, notes, remplacement du logo, changement de mot de passe.
+5. **Administration** : `/app/partenaires` — onglets statut, recherche, validation/refus, mise en avant, gestion des créneaux, notes, remplacement de logo.
+6. **Synchronisation accueil** : seuls les partenaires `validé` avec logo sont exposés par `/api/partenaires/publics`. L'accueil écoute l'événement `mboa:partners`, `localStorage` et un polling de 60 s ; le logo apparaît sans redéploiement.
+
+---
+
+## 8. Saisie & POS
+
+- Catalogue issu de `/api/filtres`, prix pré-rempli, quantité, remise plafonnée à 50 %, canal, région, ville, point de vente, vendeur.
+- Calcul en direct du montant, de la marge estimée et du taux de marge.
+- Périmètre imposé côté serveur : un commercial ne peut écrire que dans sa région.
+- `POST /api/ventes-manuelle` génère une référence `TX-MAN-…` et journalise l'action.
+- `POST /api/pos-push` injecte une vente simulée sur la journée de référence pour alimenter le live.
+
+---
+
+## 9. Rapport & exports
+
+- `/app/rapport` : synthèse 12 mois glissants, Top 10 produits, régions, familles, marge, méthodologie, sceau SHA-256, mise en page imprimable A4.
+- `GET /api/rapport` : données signées (`emp`, `horo`, période).
+- `GET /api/export/csv` et `/api/export/xlsx` : exports protégés par `exports.csv`, journalisés, limités à 100 000 lignes.
+
+---
+
+## 10. Habilitations
+
+| Permission | Admin | Manager | Commercial | Auditeur |
+|---|:---:|:---:|:---:|:---:|
+| `dashboard.view` | ✓ | ✓ | ✓ | ✓ |
+| `sales.write` | ✓ | ✓ | ✓ | — |
+| `imports.read` / `imports.write` | ✓ | ✓ | ✓ | lecture seule |
+| `imports.cancel` | ✓ | — | — | — |
+| `forms.read` / `forms.submit` | ✓ | ✓ | ✓ | lecture seule |
+| `forms.manage` | ✓ | ✓ | — | — |
+| `exports.csv` | ✓ | ✓ | ✓ | ✓ |
+| `reports.view` | ✓ | ✓ | ✓ | ✓ |
+| `audit.view` | ✓ | ✓ | — | ✓ |
+| `users.manage` | ✓ | — | — | — |
+| `partners.manage` / `partners.read` | ✓ | lecture | — | — |
+
+La matrice est visible dans **Utilisateurs & habilitations** (`/api/users/matrice`). Les contrôles sont appliqués côté serveur, pas seulement dans l'interface.
+
+---
+
+## 11. Recette
+
+```bat
+python test_api.py
+```
+
+La recette V2 couvre 72 contrôles : vitrine publique, SPA, CSRF, MFA TOTP (bon/mauvais code), cloisonnement, dashboard, filtres, saisie manuelle, POS, exports CSV/XLSX, rapport signé, imports CSV (analyse/exécution/annulation), formulaires dynamiques, utilisateurs, matrice de permissions, chaîne d'audit et verrouillage de compte.
+
+```text
+72 TESTS PASS
+```
+
+Build frontend : `cd frontend && npm run build` → `frontend/dist`.
+
+---
+
+## 12. Limites & checklist de mise en production
+
+- Pas de SMTP : les liens de réinitialisation et les notifications partenaires restent affichés dans l'interface de démonstration. Brancher un fournisseur d'email avant production.
+- Base SQLite adaptée à la démonstration et aux PME ; prévoir PostgreSQL pour un déploiement multi-instances.
+- Le mode démo (`MBOA_DEMO=1`) fournit le code TOTP courant : **à désactiver impérativement** en production.
+- Stockage des logos sur disque local (`media/logos/`) : prévoir un stockage objet et une sauvegarde.
+- Sauvegardes présentes : `app_v1_backup.py`, `frontend/src_v1_backup/`.
+- Servir l'application derrière un reverse proxy HTTPS (nginx/Caddy) et activer `MBOA_COOKIE_SECURE=1`.
+- Vérifier la rotation des secrets, la politique de sauvegarde de `sales.db` et la supervision des erreurs 500.
