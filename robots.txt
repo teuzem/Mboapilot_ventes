@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /partenaires/espace
+Disallow: /partenaires/connexion
+Disallow: /partenaires/suivi
+Disallow: /media/
+Sitemap: https://mboapilot.cm/sitemap.xml

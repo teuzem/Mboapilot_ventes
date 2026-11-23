@@ -41,6 +41,9 @@ def obligatoire(cle):
     return v
 
 
+PUBLIC_URL = brut("MBOA_PUBLIC_URL", "https://mboapilot.cm").rstrip("/")
+SHA256_CERTIFICAT = brut("SHA256_CERTIFICAT", "A_REMPLACER_PAR_L_EMPREINTE_SHA256_DU_CERTIFICAT")
+
 ENV = brut("MBOA_ENV", "development").strip().lower()
 PRODUCTION = ENV == "production"
 DEMO = booleen("MBOA_DEMO", not PRODUCTION)

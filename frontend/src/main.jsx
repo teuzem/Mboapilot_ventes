@@ -32,7 +32,9 @@ import Connecteurs from "./pages/Connecteurs";
 import MesFichiers from "./pages/MesFichiers";
 import Profil from "./pages/Profil";
 import { Spinner } from "./components";
+import InstallBanner from "./components/InstallBanner";
 import { activerNotifications } from "./push";
+import { enregistrerPrompt, enregistrerServiceWorker, masquerSplash } from "./pwa";
 
 function ScrollTop() {
   const { pathname, hash } = useLocation();
@@ -62,16 +64,14 @@ function Garde({ children, perm }) {
   return children;
 }
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
-}
-
+enregistrerServiceWorker();
+window.addEventListener("beforeinstallprompt", enregistrerPrompt);
 activerNotifications().catch(() => {});
 
 createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
+  <>
+    <InstallBanner />
+    <BrowserRouter>
     <AuthProvider>
       <ScrollTop />
       <Routes>
@@ -108,5 +108,8 @@ createRoot(document.getElementById("root")).render(
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
-  </BrowserRouter>
+    </BrowserRouter>
+  </>,
 );
+
+masquerSplash();

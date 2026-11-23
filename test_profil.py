@@ -13,6 +13,11 @@ t = c.get("/api/auth/csrf").get_json()["csrf"]
 h = {"X-CSRF-Token": t}
 r = c.post("/api/auth/login", json={"login": "admin", "password": "MboaPilot-Admin-2026!"}, headers=h)
 j = r.get_json()
+import sqlite3
+_cx = sqlite3.connect("sales.db")
+_cx.execute("UPDATE users SET mfa_last_step=-1 WHERE login='admin'")
+_cx.commit()
+_cx.close()
 r = c.post("/api/auth/mfa-confirmer", json={"code": j["code_demo"]}, headers=h)
 check("connexion", r.status_code == 200)
 

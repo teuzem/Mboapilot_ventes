@@ -206,6 +206,35 @@ def create_app():
     def spa_logo():
         return send_from_directory(DIST, "logo.svg")
 
+    @app.route("/manifest.webmanifest")
+    def manifeste():
+        return send_from_directory(DIST, "manifest.webmanifest",
+                                   mimetype="application/manifest+json")
+
+    @app.route("/sw.js")
+    def service_worker():
+        rep = send_from_directory(DIST, "sw.js", mimetype="application/javascript")
+        rep.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        rep.headers["Service-Worker-Allowed"] = "/"
+        return rep
+
+    @app.route("/offline.html")
+    def hors_ligne():
+        return send_from_directory(DIST, "offline.html")
+
+    @app.route("/.well-known/assetlinks.json")
+    def assetlinks():
+        return send_from_directory(DIST / ".well-known", "assetlinks.json",
+                                   mimetype="application/json")
+
+    @app.route("/sitemap.xml")
+    def sitemap():
+        return send_from_directory(DIST, "sitemap.xml", mimetype="application/xml")
+
+    @app.route("/robots.txt")
+    def robots():
+        return send_from_directory(DIST, "robots.txt", mimetype="text/plain")
+
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def _spa(path):

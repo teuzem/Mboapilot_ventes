@@ -46,6 +46,10 @@ def connecte(login, pwd):
     assert r.status_code == 200, (login, r.status_code, r.get_json())
     j = r.get_json()
     assert j.get("mfa_required") is True and j.get("code_demo"), ("défi MFA", j)
+    cx = sqlite3.connect(DB)
+    cx.execute("UPDATE users SET mfa_last_step=-1 WHERE login=?", (login,))
+    cx.commit()
+    cx.close()
     r = c.post("/api/auth/mfa-confirmer", json={"code": j["code_demo"]})
     assert r.status_code == 200, (login, "MFA", r.status_code, r.get_json())
     return c
