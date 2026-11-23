@@ -46,12 +46,53 @@ def _application(visible=True):
     return _APP
 
 
+def _instance_active():
+    """S'attache à une instance déjà ouverte, sans jamais en lancer une."""
+    global _APP
+    import win32com.client as win32
+    if _APP is not None:
+        try:
+            _APP.Version
+            return _APP
+        except Exception:
+            _APP = None
+    try:
+        _APP = win32.GetActiveObject("Excel.Application")
+        return _APP
+    except Exception:
+        return None
+
+
+def connecter():
+    """Ouvre Microsoft Excel de façon visible et s'y attache."""
+    global _APP, _DERNIERE_ERREUR
+    with _VERROU:
+        _com()
+        try:
+            app = _instance_active()
+            if app is None:
+                _APP = _application(visible=True)
+            else:
+                app.Visible = True
+            version = str(_APP.Version)
+            return {"ok": True, "installe": True, "version": version,
+                    "message": "Microsoft Excel est ouvert."}
+        except Exception as exc:
+            _DERNIERE_ERREUR = str(exc)[:400]
+            return {"ok": False, "message": _DERNIERE_ERREUR}
+        finally:
+            _liberer()
+
+
 def statut():
     global _DERNIERE_ERREUR
     with _VERROU:
         _com()
         try:
-            app = _application(visible=False)
+            app = _instance_active()
+            if app is None:
+                return {"installe": True, "version": "", "connecte": False,
+                        "classeurs": [], "erreur": ""}
             version = str(app.Version)
             classeurs = []
             for i in range(1, app.Workbooks.Count + 1):
@@ -62,7 +103,7 @@ def statut():
                     "erreur": ""}
         except Exception as exc:
             _DERNIERE_ERREUR = str(exc)[:400]
-            return {"installe": False, "version": "", "connecte": False,
+            return {"installe": True, "version": "", "connecte": False,
                     "classeurs": [], "erreur": _DERNIERE_ERREUR}
         finally:
             _liberer()
@@ -72,7 +113,9 @@ def classeurs_ouverts():
     with _VERROU:
         _com()
         try:
-            app = _application(visible=True)
+            app = _instance_active()
+            if app is None:
+                return {"classeurs": [], "actif": None, "erreur": ""}
             sortie = []
             actif = None
             try:

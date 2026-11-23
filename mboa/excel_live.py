@@ -30,6 +30,14 @@ def classeurs():
     return jsonify(excel_com.classeurs_ouverts())
 
 
+@bp.route("/api/excel-live/connecter", methods=["POST"])
+@perm_required("imports.write")
+def connecter():
+    resultat = excel_com.connecter()
+    audit(_login(), "excel-com-connecter", "", "OK" if resultat["ok"] else "KO")
+    return jsonify(resultat), (200 if resultat["ok"] else 400)
+
+
 @bp.route("/api/excel-live/ouvrir", methods=["POST"])
 @perm_required("imports.write")
 def ouvrir():

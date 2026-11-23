@@ -214,3 +214,16 @@
 .pq-dropzone b { font-size:13px; }
 .pq-dropzone span { font-size:11px; color:#8b93a3; }
 .pq-dropzone .pq-bouton { margin-top:6px; }
+
+.pq-com-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pq-bouton.danger { background:#d92d20; border-color:#d92d20; color:#fff; }
+.pq-bouton.danger:hover { background:#b42318; }
+.pq-com-connecte { display:flex; flex-direction:column; gap:10px; }
+.pq-ouvrir-chemin { display:flex; gap:8px; }
+.pq-ouvrir-chemin input { flex:1; min-width:0; padding:9px 11px; border:1px solid #dfe3ec; border-radius:9px; font-size:12px; font-family:inherit; }
+.pq-classeur { display:flex; align-items:center; gap:6px; border:1px solid #e8ebf2; border-radius:8px; overflow:hidden; }
+.pq-classeur.actif { border-color:#cfd3ff; background:#f3f4ff; }
+.pq-classeur-nom { flex:1; min-width:0; display:flex; align-items:center; gap:7px; padding:8px 10px; border:0; background:transparent; text-align:left; font-size:12px; color:#3d4556; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pq-classeur-nom:hover { background:#f7f8fc; }
+.pq-classeur-ouvrir { flex:0 0 auto; padding:8px 10px; border:0; border-left:1px solid #e8ebf2; background:#fff; color:#4c43d6; font-size:11px; font-weight:600; cursor:pointer; }
+.pq-classeur-ouvrir:hover { background:#eef0ff; }

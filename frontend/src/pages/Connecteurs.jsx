@@ -111,6 +111,7 @@ export default function Connecteurs() {
   const [classeurChoisi, setClasseurChoisi] = useState("");
   const [feuilleCom, setFeuilleCom] = useState("");
   const [apercuCom, setApercuCom] = useState(null);
+  const [cheminOuvrir, setCheminOuvrir] = useState("");
   const [depot, setDepot] = useState(null);
   const [glisse, setGlisse] = useState(false);
 
@@ -234,11 +235,66 @@ export default function Connecteurs() {
   const connecterExcel = async () => {
     setBusy(true);
     try {
+      const r = await api.post("/api/excel-live/connecter", {});
+      setToast({ message: r.message, tone: r.ok ? "success" : "error" });
+      if (r.ok) {
+        const s = await api.get("/api/excel-live/statut");
+        setComStatut(s);
+        const l = await api.get("/api/excel-live/classeurs");
+        setComClasseurs(l.classeurs || []);
+      }
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const actualiserExcel = async () => {
+    setBusy(true);
+    try {
       const s = await api.get("/api/excel-live/statut");
       setComStatut(s);
-      if (s.connecte) {
-        const r = await api.get("/api/excel-live/classeurs");
-        setComClasseurs(r.classeurs || []);
+      const l = await api.get("/api/excel-live/classeurs");
+      setComClasseurs(l.classeurs || []);
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const deconnecterExcel = async () => {
+    setBusy(true);
+    try {
+      await api.post("/api/excel-live/fermer", {});
+      setComStatut({ connecte: false, classeurs: [], version: "" });
+      setComClasseurs([]);
+      setClasseurChoisi("");
+      setFeuilleCom("");
+      setApercuCom(null);
+      setToast({ message: "Excel est déconnecté.", tone: "success" });
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const ouvrirClasseurCom = async (chemin) => {
+    if (!chemin) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/api/excel-live/ouvrir", { chemin });
+      if (!r.ok) {
+        setToast({ message: r.message, tone: "error" });
+      } else {
+        const l = await api.get("/api/excel-live/classeurs");
+        setComClasseurs(l.classeurs || []);
+        setClasseurChoisi(r.nom);
+        setCheminOuvrir("");
+        if (r.feuilles?.length) {
+          setFeuilleCom(r.feuilles[0]);
+          await lireClasseurCom(r.nom, r.feuilles[0]);
+        }
+        setToast({ message: r.nom + " est ouvert dans Excel.", tone: "success" });
       }
     } catch (ex) {
       setToast({ message: ex.message, tone: "error" });
@@ -606,23 +662,59 @@ export default function Connecteurs() {
                   {excelMode === "com" && (
                     <div className="pq-excel-com">
                       <div className="pq-com-etat">
-                        <span>{comStatut?.connecte ? "Connecté à Microsoft Excel " + comStatut.version : "Excel non connecté"}</span>
-                        <button className="pq-bouton" onClick={connecterExcel} disabled={busy}>
-                          <RefreshIcon fontSize="small" /> {comStatut?.connecte ? "Actualiser" : "Se connecter"}
-                        </button>
+                        <span>{comStatut?.connecte ? "Connecté à Microsoft Excel " + comStatut.version : "Microsoft Excel n'est pas ouvert"}</span>
+                        <div className="pq-com-actions">
+                          {comStatut?.connecte ? (
+                            <>
+                              <button className="pq-bouton" onClick={actualiserExcel} disabled={busy}>
+                                <RefreshIcon fontSize="small" /> Actualiser
+                              </button>
+                              <button className="pq-bouton danger" onClick={deconnecterExcel} disabled={busy}>
+                                <CloseIcon fontSize="small" /> Déconnecter le compte
+                              </button>
+                            </>
+                          ) : (
+                            <button className="pq-bouton plein" onClick={connecterExcel} disabled={busy}>
+                              <GridViewIcon fontSize="small" /> Ouvrir Excel
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {comStatut?.erreur && <p className="pq-aide">{comStatut.erreur}</p>}
-                      <div className="pq-com-listes">
-                        <div className="pq-com-colonne">
-                          <b>Classeurs ouverts dans Excel</b>
-                          {comClasseurs.length === 0 && <p className="pq-vide">Ouvrez un classeur dans Excel puis actualisez.</p>}
-                          {comClasseurs.map((wb) => (
-                            <button key={wb.nom} className={classeurChoisi === wb.nom ? "actif" : ""}
-                              onClick={() => { setClasseurChoisi(wb.nom); setFeuilleCom(wb.feuilles[0]?.nom || ""); setApercuCom(null); }}>
-                              <GridViewIcon fontSize="small" /> {wb.nom}
+                      {!comStatut?.connecte && (
+                        <p className="pq-aide">Ouvrez Excel pour voir vos classeurs actifs, puis choisissez celui que vous voulez charger.</p>
+                      )}
+                      {comStatut?.connecte && (
+                        <div className="pq-com-connecte">
+                          <div className="pq-ouvrir-chemin">
+                            <input value={cheminOuvrir} onChange={(e) => setCheminOuvrir(e.target.value)}
+                              placeholder="Chemin d'un classeur à ouvrir dans Excel" />
+                            <button className="pq-bouton" onClick={() => ouvrirClasseurCom(cheminOuvrir)} disabled={!cheminOuvrir || busy}>
+                              Ouvrir le classeur
                             </button>
-                          ))}
-                        </div>
+                          </div>
+                          <div className="pq-com-listes">
+                            <div className="pq-com-colonne">
+                              <b>Fichiers Excel actifs</b>
+                              {comClasseurs.length === 0 && <p className="pq-vide">Aucun classeur ouvert. Ouvrez-en un depuis Excel ou avec le champ ci-dessus.</p>}
+                              {comClasseurs.map((wb) => (
+                                <div key={wb.nom} className={"pq-classeur" + (classeurChoisi === wb.nom ? " actif" : "")}>
+                                  <button className="pq-classeur-nom" onClick={() => {
+                                    setClasseurChoisi(wb.nom);
+                                    setFeuilleCom(wb.feuilles[0]?.nom || "");
+                                    setApercuCom(null);
+                                  }}>
+                                    <GridViewIcon fontSize="small" /> {wb.nom}
+                                  </button>
+                                  <button className="pq-classeur-ouvrir" onClick={() => {
+                                    setClasseurChoisi(wb.nom);
+                                    const premiere = wb.feuilles[0]?.nom || "";
+                                    setFeuilleCom(premiere);
+                                    if (premiere) lireClasseurCom(wb.nom, premiere);
+                                  }}>Ouvrir</button>
+                                </div>
+                              ))}
+                            </div>
                         <div className="pq-com-colonne">
                           <b>Feuilles</b>
                           {(comClasseurs.find((w) => w.nom === classeurChoisi)?.feuilles || []).map((f) => (
@@ -643,9 +735,11 @@ export default function Connecteurs() {
                           </div>
                         </div>
                       )}
-                      <button className="pq-bouton plein" onClick={chargerFeuilleCom} disabled={!apercuCom || busy}>
-                        Charger cette feuille dans la requête
-                      </button>
+                        <button className="pq-bouton plein" onClick={chargerFeuilleCom} disabled={!apercuCom || busy}>
+                          Charger cette feuille dans la requête
+                        </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
