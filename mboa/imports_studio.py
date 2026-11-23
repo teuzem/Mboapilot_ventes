@@ -436,6 +436,15 @@ def api_executer():
         cx.commit()
         audit(session["user"], "import-execute", f"#{import_id} {meta['nom']}", statut,
               f"{integ} intégrées, {maj} mises à jour, {res['resume']['doublons']} doublons, {res['resume']['rejets']} rejets")
+        from .schema import evenement
+        evenement("import", str(import_id), f"{integ} lignes intégrées")
+        from . import notifications
+        notifications.notifier_admin(
+            "Import terminé",
+            meta["nom"] + " : " + str(integ) + " lignes intégrées, " +
+            str(res["resume"]["rejets"]) + " rejets.",
+            "import",
+        )
         return jsonify({"ok": True, "import_id": import_id, "statut": statut, "duree_ms": duree,
                         "resume": {**res["resume"], "integrees": integ, "mises_a_jour": maj},
                         "erreurs": res["erreurs"],
@@ -541,6 +550,8 @@ def api_import_annuler(import_id):
     r = cx.execute("SELECT * FROM imports WHERE id=?", (import_id,)).fetchone()
     if not r:
         return jsonify({"message": "Import introuvable."}), 404
+    if session.get("role") != "Admin" and r["user_login"] != session.get("user"):
+        return jsonify({"message": "Habilitation insuffisante pour annuler cet import."}), 403
     if r["annule"]:
         return jsonify({"message": "Import déjà annulé."}), 400
     n = cx.execute("SELECT COUNT(*) c FROM sales WHERE import_id=? AND import_created=1",
@@ -632,6 +643,12 @@ def api_forms_save():
 @perm_required("forms.manage")
 def api_forms_delete(fid):
     cx = db()
+    t = cx.execute("SELECT created_by FROM form_templates WHERE id=?", (fid,)).fetchone()
+    if not t:
+        return jsonify({"message": "Formulaire introuvable."}), 404
+    if (t["created_by"] not in (None, "", "system", session.get("user"))
+            and session.get("role") != "Admin"):
+        return jsonify({"message": "Habilitation insuffisante pour supprimer ce formulaire."}), 403
     n = cx.execute("SELECT COUNT(*) c FROM form_templates").fetchone()["c"]
     if n <= 1:
         return jsonify({"message": "Impossible de supprimer le dernier formulaire."}), 400

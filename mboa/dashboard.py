@@ -25,6 +25,20 @@ def _shift(d, annees=1):
         return d.replace(year=d.year - annees, day=28)
 
 
+def _serie_complete(debut, fin, lignes):
+    """Remplit les jours sans vente avec zéro pour une série continue."""
+    connu = {str(r["jour"])[:10]: r["ca"] for r in lignes}
+    d0 = debut if isinstance(debut, date) else date.fromisoformat(str(debut)[:10])
+    d1 = fin if isinstance(fin, date) else date.fromisoformat(str(fin)[:10])
+    serie = []
+    d = d0
+    while d <= d1:
+        iso = d.isoformat()
+        serie.append({"jour": iso, "ca": connu.get(iso, 0)})
+        d += timedelta(days=1)
+    return serie
+
+
 def _clause_base():
     f, p = [], []
     for champ, col in (("region", "region"), ("canal", "canal"), ("famille", "famille"),
@@ -333,8 +347,9 @@ def api_filtres():
     q = lambda col: [r[0] for r in cx.execute(
         f"SELECT DISTINCT {col} FROM sales WHERE 1=1{clause} AND {col} IS NOT NULL ORDER BY {col}", p).fetchall()]
     prods = [{"produit": r["produit"], "famille": r["famille"], "prix": r["prix"]}
-             for r in cx.execute("""SELECT produit, famille, AVG(prix_unit) prix
-                                    FROM sales GROUP BY produit ORDER BY produit""").fetchall()]
+             for r in cx.execute(f"""SELECT produit, famille, AVG(prix_unit) prix
+                                    FROM sales WHERE 1=1{clause}
+                                    GROUP BY produit ORDER BY produit""", p).fetchall()]
     return jsonify({"regions": q("region"), "canaux": q("canal"), "familles": q("famille"),
                     "vendeurs": q("vendeur"), "produits": prods})
 
@@ -400,6 +415,7 @@ def api_live():
 
 def _live_direct(role, perim):
     import sqlite3
+    from .schema import objectif
     cx = sqlite3.connect(DB, timeout=10)
     cx.row_factory = sqlite3.Row
     try:
@@ -412,13 +428,16 @@ def _live_direct(role, perim):
                        [ref] + params).fetchone()
         n1 = cx.execute(f"SELECT COALESCE(SUM(montant),0) ca FROM sales WHERE jour=date(?, '-1 year'){where}",
                         [ref] + params).fetchone()["ca"]
+        cible, indicatif = objectif("journalier", perim or "National",
+                                    defaut=round((n1 or 0) * 1.10))
         recentes = cx.execute(
             f"""SELECT ref,jour,canal,region,produit,montant,vendeur,source,created_at FROM sales
                 WHERE 1=1{where} ORDER BY jour DESC, id DESC LIMIT 8""", params).fetchall()
         total = cx.execute(f"SELECT COUNT(*) c FROM sales WHERE 1=1{where}", params).fetchone()["c"]
-        return {"caJour": r["ca"], "nbJour": r["n"], "objectifJour": round(n1 * 1.10),
-                "reference": ref, "recentes": [dict(x) for x in recentes], "total": total,
-                "maj": datetime.now().strftime("%H:%M:%S")}
+        return {"caJour": r["ca"], "nbJour": r["n"], "objectifJour": cible,
+                "objectifIndicatif": indicatif, "reference": ref,
+                "recentes": [dict(x) for x in recentes], "total": total,
+                "maj": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}
     finally:
         cx.close()
 
@@ -427,16 +446,38 @@ def _live_direct(role, perim):
 @login_required
 def api_live_stream():
     role, perim = session.get("role"), session.get("perimetre")
+    try:
+        dernier_id = int(request.args.get("last_id", 0))
+    except ValueError:
+        dernier_id = 0
 
     def generateur():
-        for _ in range(60):
+        courant = dernier_id
+        battement = 0
+        while True:
             try:
-                data = _live_direct(role, perim)
-                yield "data: " + json.dumps(data, ensure_ascii=False) + "\n\n"
-            except Exception:
-                yield "event: error\ndata: {}\n\n"
-            time.sleep(6)
-        yield "event: end\ndata: {}\n\n"
+                import sqlite3
+                cx = sqlite3.connect(DB, timeout=10)
+                cx.row_factory = sqlite3.Row
+                nouveaux = cx.execute(
+                    "SELECT id,type,reference,horo FROM evenements WHERE id>? ORDER BY id LIMIT 50",
+                    (courant,)).fetchall()
+                cx.close()
+                if nouveaux:
+                    courant = nouveaux[-1]["id"]
+                    data = _live_direct(role, perim)
+                    data["evenements"] = [dict(x) for x in nouveaux]
+                    data["last_id"] = courant
+                    yield "id: " + str(courant) + "\ndata: " + json.dumps(data, ensure_ascii=False) + "\n\n"
+                    battement = 0
+                else:
+                    battement += 1
+                    if battement >= 3:
+                        yield ": battement " + datetime.utcnow().strftime("%H:%M:%S") + "\n\n"
+                        battement = 0
+            except Exception as exc:
+                yield "event: error\ndata: " + json.dumps({"message": str(exc)[:200]}) + "\n\n"
+            time.sleep(5)
 
     return Response(stream_with_context(generateur()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
@@ -459,12 +500,12 @@ def api_vitrine_stats():
                         FROM sales WHERE jour >= ? AND jour <= ?""", (debut, fin)).fetchone()
     old = cx.execute("SELECT COALESCE(SUM(montant),0) s, COUNT(*) n FROM sales WHERE jour >= ? AND jour <= ?",
                      (debut1, fin1)).fetchone()
-    serie = [{"jour": r["jour"], "ca": r["ca"]} for r in cx.execute(
+    serie = _serie_complete(debut, fin, cx.execute(
         "SELECT jour, SUM(montant) ca FROM sales WHERE jour >= ? AND jour <= ? GROUP BY jour ORDER BY jour",
-        (debut, fin)).fetchall()]
-    serie_n1 = [{"jour": r["jour"], "ca": r["ca"]} for r in cx.execute(
+        (debut, fin)).fetchall())
+    serie_n1 = _serie_complete(debut1, fin1, cx.execute(
         "SELECT jour, SUM(montant) ca FROM sales WHERE jour >= ? AND jour <= ? GROUP BY jour ORDER BY jour",
-        (debut1, fin1)).fetchall()]
+        (debut1, fin1)).fetchall())
     regs = [{"region": r["region"], "ca": r["ca"]} for r in cx.execute(
         "SELECT region, SUM(montant) ca FROM sales WHERE jour >= ? AND jour <= ? GROUP BY region ORDER BY ca DESC LIMIT 5",
         (debut, fin)).fetchall()]
@@ -476,7 +517,7 @@ def api_vitrine_stats():
     obj = (old["s"] or 0) * 1.10
     taux_mg = round(m30["mg"] / m30["s"] * 100, 1) if m30["s"] else None
     partenaires = cx.execute("SELECT COUNT(*) c FROM partners WHERE statut='valide'").fetchone()["c"]
-    recentes = cx.execute("""SELECT region,canal,produit,montant,created_at,jour FROM sales
+    recentes = cx.execute("""SELECT region,canal,jour FROM sales
                              ORDER BY jour DESC, id DESC LIMIT 6""").fetchall()
     return jsonify({
         "nb": nb, "caM": round(ca / 1e6), "regions": sites["regions"],
@@ -492,8 +533,8 @@ def api_vitrine_stats():
         "serie30": serie, "serieN1": serie_n1, "topRegions": regs, "canaux": canaux,
         "partenaires": partenaires, "ref_date": ref.isoformat(),
         "maj": datetime.now().strftime("%H:%M:%S"),
-        "derniers": [{"region": r["region"], "canal": r["canal"], "produit": r["produit"],
-                      "montant": r["montant"], "jour": r["jour"]} for r in recentes],
+        "derniers": [{"region": r["region"], "canal": r["canal"], "jour": r["jour"]}
+                     for r in recentes],
     })
 
 
@@ -505,16 +546,18 @@ def api_vitrine_live():
                    (ref.isoformat(),)).fetchone()
     n1 = cx.execute("SELECT COALESCE(SUM(montant),0) ca FROM sales WHERE jour=date(?, '-1 year')",
                     (ref.isoformat(),)).fetchone()["ca"]
-    recentes = cx.execute("""SELECT region,canal,produit,montant,jour,created_at FROM sales
+    recentes = cx.execute("""SELECT region,canal,jour FROM sales
                              ORDER BY jour DESC, id DESC LIMIT 8""").fetchall()
     serie = [{"jour": x["jour"], "ca": x["ca"]} for x in cx.execute(
         "SELECT jour, SUM(montant) ca FROM sales WHERE jour <= ? GROUP BY jour ORDER BY jour DESC LIMIT 14",
         (ref.isoformat(),)).fetchall()][::-1]
     total = cx.execute("SELECT COUNT(*) c FROM sales").fetchone()["c"]
     partenaires = cx.execute("SELECT COUNT(*) c FROM partners WHERE statut='valide'").fetchone()["c"]
-    return jsonify({"caJour": r["ca"], "nbJour": r["n"], "objectifJour": round(n1 * 1.10),
+    from .schema import objectif
+    cible, indicatif = objectif("journalier", "National", defaut=round((n1 or 0) * 1.10))
+    return jsonify({"caJour": r["ca"], "nbJour": r["n"], "objectifJour": cible,
+                    "objectifIndicatif": indicatif,
                     "partenaires": partenaires, "total": total, "serie": serie,
-                    "recentes": [{"region": x["region"], "canal": x["canal"], "produit": x["produit"],
-                                  "montant": x["montant"], "jour": x["jour"],
-                                  "created_at": x["created_at"]} for x in recentes],
-                    "reference": ref.isoformat(), "maj": datetime.now().strftime("%H:%M:%S")})
+                    "recentes": [{"region": x["region"], "canal": x["canal"], "jour": x["jour"]}
+                                 for x in recentes],
+                    "reference": ref.isoformat(), "maj": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")})

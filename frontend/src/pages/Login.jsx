@@ -10,6 +10,19 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { Logo, Spinner } from "../components";
 
+function decodeB64url(texte) {
+  const pad = "=".repeat((4 - (texte.length % 4)) % 4);
+  const binaire = atob(texte.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  return Uint8Array.from(binaire, (c) => c.charCodeAt(0));
+}
+
+function encodeB64url(buffer) {
+  const octets = new Uint8Array(buffer);
+  let binaire = "";
+  for (const o of octets) binaire += String.fromCharCode(o);
+  return btoa(binaire).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export default function Login() {
   const nav = useNavigate();
   const { user, ready, setUser } = useAuth();
@@ -39,6 +52,47 @@ export default function Login() {
     }
   };
   const go = (e) => { e.preventDefault(); connecter(login, pwd); };
+
+  const connecterPasskey = async () => {
+    setErr("");
+    if (!window.PublicKeyCredential) {
+      setErr("Ce navigateur ne prend pas en charge les passkeys.");
+      return;
+    }
+    const identifiant = login.trim();
+    if (!identifiant) {
+      setErr("Saisissez votre identifiant pour utiliser une passkey.");
+      return;
+    }
+    setEnvoi("passkey");
+    try {
+      const options = await api.post("/api/webauthn/auth-options", { login: identifiant });
+      options.challenge = decodeB64url(options.challenge);
+      if (options.allowCredentials) {
+        options.allowCredentials = options.allowCredentials.map((c) => ({ ...c, id: decodeB64url(c.id) }));
+      }
+      const cred = await navigator.credentials.get({ publicKey: options });
+      if (!cred) throw new Error("Authentification annulée.");
+      const rep = await api.post("/api/webauthn/auth-verify", {
+        id: cred.id,
+        rawId: encodeB64url(cred.rawId),
+        type: cred.type,
+        response: {
+          authenticatorData: encodeB64url(cred.response.authenticatorData),
+          clientDataJSON: encodeB64url(cred.response.clientDataJSON),
+          signature: encodeB64url(cred.response.signature),
+          userHandle: cred.response.userHandle ? encodeB64url(cred.response.userHandle) : null,
+        },
+        clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      });
+      setUser(rep.user);
+      nav("/app", { replace: true });
+    } catch (ex) {
+      setErr(ex.message || "Passkey refusée.");
+    } finally {
+      setEnvoi("");
+    }
+  };
 
   return (
     <div className="auth-page auth-v2">
@@ -78,6 +132,10 @@ export default function Login() {
               {envoi ? <><Spinner inline label="" /> Ouverture…</> : <>Continuer <ArrowForwardIcon /></>}
             </button>
           </form>
+          <button className="btn btn-outline btn-block" type="button" onClick={connecterPasskey} disabled={Boolean(envoi)} style={{ marginTop: 12 }}>
+            <VerifiedUserIcon /> Se connecter avec une passkey
+          </button>
+          <input type="text" name="username" autoComplete="username webauthn" style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 1, height: 1 }} tabIndex={-1} aria-hidden="true" />
           <div className="auth-links">
             <Link to="/reset">Mot de passe oublié ?</Link>
             <span>·</span>

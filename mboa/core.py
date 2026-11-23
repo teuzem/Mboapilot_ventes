@@ -18,17 +18,15 @@ from pathlib import Path
 from flask import g, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-BASE = Path(__file__).resolve().parent.parent
+from .config import (BASE, DEMO, MFA_OBLIGATOIRE, SESSION_MAX_HEURES,
+                     SESSION_MINUTES)
+
 DB = BASE / "sales.db"
 DIST = BASE / "frontend" / "dist"
 UPLOADS = BASE / "uploads"
 LOGOS_DIR = UPLOADS / "logos"
 LOGOS_DIR.mkdir(parents=True, exist_ok=True)
 
-DEMO = os.environ.get("MBOA_DEMO", "1") == "1"
-MFA_OBLIGATOIRE = os.environ.get("MBOA_MFA", "1") == "1"
-SESSION_MINUTES = int(os.environ.get("MBOA_SESSION_MINUTES", "30"))
-SESSION_MAX_HEURES = int(os.environ.get("MBOA_SESSION_MAX_HOURS", "8"))
 MAX_UPLOAD = 24 * 1024 * 1024
 MAX_LIGNES_IMPORT = 20000
 
@@ -114,6 +112,7 @@ MOTS_INTERDITS = {"password123456", "motdepasse123", "azerty123456", "1234567890
 
 _LIMITES = defaultdict(list)
 _LIMITE_LOCK = threading.Lock()
+_FROM_DB = False
 
 
 # ---------- Base de données ----------
@@ -244,8 +243,9 @@ def migrate():
                     "Saisie guidée d'une ou plusieurs ventes, avec les mêmes contrôles que l'import fichier.",
                     json.dumps(champs, ensure_ascii=False), "system"))
 
-    # Partenaires historiques (logo gris/our wall) : la landing lit la base, pas une liste codée.
-    if not cx.execute("SELECT id FROM partners LIMIT 1").fetchone():
+    # Partenaires de démonstration uniquement. En production, le mur se remplit
+    # par les vraies inscriptions validées depuis le portail partenaire.
+    if DEMO and not cx.execute("SELECT id FROM partners LIMIT 1").fetchone():
         seeds = [
             ("MTN Cameroun", "mtn.cm", "Télécoms", "Littoral", "/img/logos/mtn.png", 1),
             ("Orange Cameroun", "orange.cm", "Télécoms", "Centre", "/img/logos/orange.png", 1),
@@ -367,7 +367,36 @@ def session_user():
 
 # ---------- Rate limiting ----------
 def rate_limit(cle, maxi, fenetre):
+    """Limiteur persistant en base, partagé entre processus et redémarrages."""
+    import sqlite3
     now = time.time()
+    try:
+        cx = sqlite3.connect(DB, timeout=5)
+        cx.execute("PRAGMA busy_timeout=5000")
+        cx.execute("""CREATE TABLE IF NOT EXISTS rate_limits(
+            cle TEXT PRIMARY KEY, fenetre_debut REAL, compteur INTEGER DEFAULT 0)""")
+        cx.execute("BEGIN IMMEDIATE")
+        r = cx.execute("SELECT fenetre_debut,compteur FROM rate_limits WHERE cle=?", (cle,)).fetchone()
+        if not r or (now - float(r["fenetre_debut"])) >= fenetre:
+            cx.execute("""INSERT INTO rate_limits(cle,fenetre_debut,compteur) VALUES(?,?,1)
+                          ON CONFLICT(cle) DO UPDATE SET fenetre_debut=excluded.fenetre_debut,
+                          compteur=1""", (cle, now))
+            ok = True
+        elif int(r["compteur"]) >= maxi:
+            ok = False
+        else:
+            cx.execute("UPDATE rate_limits SET compteur=compteur+1 WHERE cle=?", (cle,))
+            ok = True
+        cx.commit()
+        cx.close()
+        return ok
+    except Exception:
+        cx = locals().get("cx")
+        if cx is not None:
+            try:
+                cx.close()
+            except Exception:
+                pass
     with _LIMITE_LOCK:
         arr = [t for t in _LIMITES[cle] if now - t < fenetre]
         if len(arr) >= maxi:

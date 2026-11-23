@@ -192,8 +192,8 @@ function HeroDashboard({ d, live, maj, partners }) {
                   <span className="dc-sale-ic" style={{ background: ["#EEF0FF", "#E6F9F1", "#FFF4DC"][i % 3], color: ["#635BFF", "#00A36C", "#B47800"][i % 3] }}>
                     <StorefrontIcon />
                   </span>
-                  <div><b>{v.produit}</b><span>{v.region} · {v.canal}</span></div>
-                  <strong>{fmt(v.montant)}</strong>
+                  <div><b>Transaction {v.canal}</b><span>{v.region} · {v.jour}</span></div>
+                  <strong>Sécurisé</strong>
                 </div>
               ))}
               {!recentes.length && [0, 1, 2].map((i) => (
@@ -234,8 +234,8 @@ function Ticker({ live }) {
       <div className="ticker-track">
         {suite.map((v, i) => (
           <span className="ticker-item" key={i}>
-            <b>{v.region}</b> · {v.produit} <em>{fmt(v.montant)} FCFA</em>
-            <i>{v.canal}</i>
+            <b>{v.region}</b> · transaction <em>{v.canal}</em>
+            <i>{v.jour}</i>
           </span>
         ))}
       </div>

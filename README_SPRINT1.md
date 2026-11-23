@@ -207,3 +207,55 @@ Build frontend : `cd frontend && npm run build` â†’ `frontend/dist`.
 - Sauvegardes prÃ©sentes : `app_v1_backup.py`, `frontend/src_v1_backup/`.
 - Servir l'application derriÃ¨re un reverse proxy HTTPS (nginx/Caddy) et activer `MBOA_COOKIE_SECURE=1`.
 - VÃ©rifier la rotation des secrets, la politique de sauvegarde de `sales.db` et la supervision des erreurs 500.
+
+---
+
+## 13. Incrément de consolidation et extensions livrées
+
+Cette section décrit le travail réalisé après le premier commit de sécurisation. Toutes les fonctions ci-dessous sont opérationnelles et couvertes par `test_extensions.py`.
+
+### 13.1 Configuration
+
+Toutes les variables sont désormais centralisées dans `mboa/config.py` et chargées depuis un fichier `.env` à la racine. Copiez `.env.example` vers `.env` puis remplissez les clés. Le démarrage échoue immédiatement si une clé obligatoire manque en production. Générez les secrets locaux avec :
+
+```bat
+python -m mboa.outils secret
+python -m mboa.outils vapid
+```
+
+### 13.2 Authentification forte durcie
+
+Le module `mboa/mfa.py` applique la RFC 6238 et les recommandations OWASP. Les graines TOTP sont chiffrées avec `MBOA_MFA_KEY`. Un code accepté ne peut plus être rejoué : le dernier pas de temps est enregistré et comparé de façon atomique. Seuls le pas courant et le pas précédent sont acceptés, avec une dérive d horloge conservée par jeton. Les codes de secours utilisent un poivre serveur `MBOA_RECOVERY_PEPPER`, sont hachés et affichés une seule fois. La désactivation de la MFA est interdite aux rôles Admin, Manager et Auditeur. Les actions sensibles exigent une vérification récente. Le code par email et le lien de réinitialisation sont réellement envoyés.
+
+Les passkeys WebAuthn sont disponibles avec `py_webauthn`. Le serveur exige la vérification utilisateur et contrôle le drapeau côté serveur. Le bouton d enrôlement se trouve dans Mon compte et la connexion par passkey est proposée sur la page de connexion.
+
+### 13.3 Notifications
+
+Le module `mboa/notifications.py` envoie les emails via l API Resend ou via SMTP Brevo selon `MBOA_MAIL_PROVIDER`. Les envois passent par une table outbox avec trois reprises en back-off. Les notifications Web Push utilisent VAPID avec `pywebpush`. Le service worker est servi depuis `/sw.js`. Un badge de cloche affiche les notifications in-app dans l espace client.
+
+Procédure Resend : créez un compte sur resend.com, ajoutez et vérifiez votre domaine dans Domains, créez une clé dans API keys avec l autorisation Sending access, copiez la valeur dans `RESEND_API_KEY`, puis renseignez `MBOA_MAIL_FROM` avec une adresse du domaine vérifié.
+
+Procédure Brevo : ouvrez Settings puis SMTP et API, créez une clé SMTP, relevez le login SMTP affiché, puis renseignez `MBOA_MAIL_PROVIDER=smtp`, `BREVO_SMTP_LOGIN` et `BREVO_SMTP_KEY`.
+
+Procédure VAPID : exécutez `python -m mboa.outils vapid` et copiez les trois lignes affichées dans `.env`.
+
+### 13.4 Connecteurs et ETL
+
+Le module `mboa/etl.py` implémente des connecteurs REST avec OAuth2, clé API ou basic auth, CSV distant, SFTP, dossier local, Excel et PDF. Le moteur de transformation reprend la logique de Power Query : sélection et renommage de colonnes, filtres, colonnes calculées, changement de type, suppression de lignes et mapping vers le schéma de ventes. Chaque exécution est journalisée dans `connector_runs`. Les endpoints sont `/api/connecteurs`, `/api/connecteurs/tester`, `/api/connecteurs/<id>/sync` et `/api/etl/etapes`. L extraction PDF est disponible via `/api/pdf/extraire`.
+
+### 13.5 Données et temps réel
+
+Le multiplicateur d objectif de 10 pour cent est remplacé par une table `objectifs` administrable via `/api/objectifs`. Le flux SSE ne pousse plus une table figée : il lit la table `evenements` alimentée par les ventes, les imports et les synchronisations, avec un battement toutes les quinze secondes et un horodatage serveur. Les données publiques de la vitrine ne exposent plus le produit ni le montant des ventes. La requête produits de `/api/filtres` respecte désormais le périmètre. Les sessions partenaires sont soumises à la même expiration et à la même vérification de version que les sessions utilisateurs. Les limites de débit sont persistées en base.
+
+### 13.6 Alertes et rapports
+
+Les règles d alerte se configurent via `/api/alert-rules` avec indicateur, opérateur, seuil, région et criticité. Le moteur applique un anti-rebond d une heure, envoie les alertes par email et SMS pour la criticité haute, et crée des notifications in-app. Le rapport hebdomadaire est envoyé via `python -m mboa.outils rapport-hebdo`. L export d audit PDF est disponible via `/api/audit/export-pdf` avec une signature HMAC dans l en-tête `X-Signature`.
+
+### 13.7 Recette
+
+```bat
+python test_api.py
+python test_extensions.py
+```
+
+La première suite couvre 72 contrôles, la seconde 21 contrôles portant sur les nouvelles fonctions.

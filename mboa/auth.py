@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Authentification V2 : TOTP réel, codes de secours, CSRF, sessions, RBAC, utilisateurs."""
 import hashlib
+import hmac
 import io
 import json
 import re
@@ -11,10 +12,12 @@ from datetime import datetime, timedelta
 import pyotp
 from flask import Blueprint, Response, jsonify, request, session
 
-from .core import (DEMO, REGIONS, ROLES, PERMISSIONS, ROLE_PERMISSIONS, audit,
+from . import mfa, notifications
+from .config import DEMO, MFA_OBLIGATOIRE, STEP_UP_MINUTES
+from .core import (REGIONS, ROLES, PERMISSIONS, ROLE_PERMISSIONS, audit,
                    audit_connexion, db, email_valide, hash_password, has_perm,
                    login_required, nouvelle_csrf, perm_required, perms, rate_limit,
-                   ref_date, session_user, valider_mot_de_passe, verifier_mot_de_passe)
+                   session_user, valider_mot_de_passe, verifier_mot_de_passe)
 
 bp = Blueprint("auth", __name__)
 
@@ -32,42 +35,6 @@ DEMO_EMAILS = {
 }
 
 
-def _hash_code(code):
-    return hashlib.sha256(("MBOA-RECOVERY|" + code.strip().upper()).encode()).hexdigest()
-
-
-def _generer_codes_secours(login, nb=10):
-    cx = db()
-    cx.execute("DELETE FROM recovery_codes WHERE login=?", (login,))
-    clairs = []
-    for _ in range(nb):
-        brut = secrets.token_hex(5).upper()
-        code = brut[:5] + "-" + brut[5:]
-        clairs.append(code)
-        cx.execute("INSERT INTO recovery_codes(login,code_hash) VALUES(?,?)", (login, _hash_code(code)))
-    cx.commit()
-    return clairs
-
-
-def _codes_restants(login):
-    r = db().execute("SELECT COUNT(*) c FROM recovery_codes WHERE login=? AND utilise=0", (login,)).fetchone()
-    return r["c"] if r else 0
-
-
-def _consommer_code_secours(login, code):
-    if not code:
-        return False
-    cx = db()
-    h = _hash_code(code)
-    r = cx.execute("SELECT id FROM recovery_codes WHERE login=? AND code_hash=? AND utilise=0",
-                   (login, h)).fetchone()
-    if not r:
-        return False
-    cx.execute("UPDATE recovery_codes SET utilise=1 WHERE id=?", (r["id"],))
-    cx.commit()
-    return True
-
-
 def _mask_email(email):
     email = email or ""
     if "@" not in email:
@@ -77,25 +44,26 @@ def _mask_email(email):
 
 
 def _secret_utilisateur(u):
-    return u["mfa_secret"] or pyotp.random_base32()
+    return mfa.secret_utilisateur(u)
 
 
 def _uri_totp(login, secret):
-    return pyotp.TOTP(secret).provisioning_uri(name=f"{login}@mboapilot.cm", issuer_name="MboaPilot")
+    return mfa.uri_provisioning(login, secret)
 
 
 def _defi_mfa(u):
     """Prépare la session intermédiaire et renvoie le défi (setup ou TOTP)."""
     login = u["login"]
-    secret = _secret_utilisateur(u)
-    if secret != u["mfa_secret"]:
-        db().execute("UPDATE users SET mfa_secret=? WHERE id=?", (secret, u["id"]))
-        db().commit()
+    secret = mfa.secret_utilisateur(u)
+    u = db().execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     mode = "totp" if u["mfa_actif"] else "setup"
+    csrf = session.get("csrf")
+    session.clear()
     session["pre_mfa"] = login
     session["pre_mfa_started"] = time.time()
     session["mfa_attempts"] = 0
     session["mfa_mode"] = mode
+    session["csrf"] = csrf or nouvelle_csrf()
     session.modified = True
     rep = {
         "mfa_required": True,
@@ -103,16 +71,16 @@ def _defi_mfa(u):
         "login": login,
         "nom": u["nom"],
         "email_masque": _mask_email(u["email"]),
-        "recovery_disponible": _codes_restants(login) > 0,
+        "recovery_disponible": mfa.codes_restants(login) > 0,
         "expire_minutes": 10,
+        "email_code_disponible": bool(u["email"]),
     }
     if mode == "setup":
-        rep["otpauth_url"] = _uri_totp(login, secret)
-        rep["secret"] = secret
-        rep["qr_url"] = "/api/auth/mfa/qr"
+        rep.update({"otpauth_url": _uri_totp(login, secret), "secret": secret,
+                    "qr_url": "/api/auth/mfa/qr"})
     if DEMO:
-        rep["code_demo"] = pyotp.TOTP(secret).now()
-        rep["demo_note"] = "Mode démo : le code TOTP courant est fourni pour la démonstration. Désactivez MBOA_DEMO en production."
+        rep["code_demo"] = mfa.code_courant(secret, u["mfa_drift"])
+        rep["demo_note"] = "Mode démo : le code TOTP courant est fourni pour la démonstration."
     audit(login, "mfa-defi", mode, "OK")
     return rep
 
@@ -120,19 +88,37 @@ def _defi_mfa(u):
 def _ouvrir_session(u):
     csrf = session.get("csrf")
     session.clear()
-    if csrf:
-        session["csrf"] = csrf
     session.permanent = True
+    session["csrf"] = csrf or nouvelle_csrf()
     session.update({
         "user": u["login"], "nom": u["nom"], "role": u["role"],
         "perimetre": u["perimetre"], "email": u["email"], "uid": u["id"],
         "sv": int(u["session_version"] or 1), "mfa": True,
+        "step_up_at": time.time(),
         "started": time.time(), "last_seen": time.time(),
     })
     db().execute("UPDATE users SET derniere_connexion=datetime('now'), echecs=0, bloque_jusqua=NULL WHERE id=?",
                  (u["id"],))
     db().commit()
     audit(u["login"], "connexion-mfa", "totp" if u["mfa_actif"] else "setup", "OK")
+
+
+def step_up_valide():
+    t = session.get("step_up_at", 0)
+    return (time.time() - float(t)) <= STEP_UP_MINUTES * 60
+
+
+def step_up_required(f):
+    from functools import wraps
+    @wraps(f)
+    def w(*a, **k):
+        if "user" not in session:
+            return jsonify({"message": "Session expirée.", "code": "session"}), 401
+        if not step_up_valide():
+            return jsonify({"message": "Vérification récente requise. Validez votre code TOTP.",
+                            "code": "step_up"}), 403
+        return f(*a, **k)
+    return w
 
 
 # ---------- CSRF / session ----------
@@ -173,6 +159,11 @@ def api_login():
         return jsonify({"message": "Identifiant et mot de passe requis."}), 400
     if not rate_limit("login-compte:" + lg, 8, 60):
         return jsonify({"message": "Trop de tentatives sur ce compte. Patience une minute.", "code": "rate"}), 429
+    if session.get("user"):
+        csrf = session.get("csrf")
+        session.clear()
+        if csrf:
+            session["csrf"] = csrf
     cx = db()
     u = cx.execute("SELECT * FROM users WHERE login=? AND actif=1", (lg,)).fetchone()
     now = datetime.utcnow()
@@ -234,25 +225,21 @@ def api_mfa_confirmer():
     if not u:
         return jsonify({"message": "Compte introuvable.", "code": "auth"}), 401
     ok = False
+    moyen = "totp"
     if secours:
-        ok = _consommer_code_secours(lg, secours)
+        moyen = "secours"
+        ok = mfa.consommer_code_secours(lg, secours)
         if not ok:
             audit(lg, "mfa-secours", "login", "KO")
     elif re.fullmatch(r"\d{6}", code):
-        secret = u["mfa_secret"]
-        if secret and pyotp.TOTP(secret).verify(code, valid_window=1):
+        accepte, raison = mfa.verifier_totp(u, code)
+        if accepte:
             ok = True
+        elif raison == "replay":
+            audit(lg, "mfa-replay", "login", "KO")
         else:
-            r = db().execute(
-                "SELECT * FROM mfa_codes WHERE login=? AND utilise=0 ORDER BY id DESC LIMIT 1", (lg,)).fetchone()
-            if r and (r["tentatives"] or 0) < 5:
-                if datetime.utcnow() <= datetime.fromisoformat(r["expire"]) and r["code"] == code:
-                    db().execute("UPDATE mfa_codes SET utilise=1 WHERE id=?", (r["id"],))
-                    db().commit()
-                    ok = True
-                else:
-                    db().execute("UPDATE mfa_codes SET tentatives=tentatives+1 WHERE id=?", (r["id"],))
-                    db().commit()
+            moyen = "email"
+            ok = mfa.verifier_code_email(lg, code)
     if not ok:
         essais = int(session.get("mfa_attempts", 0)) + 1
         session["mfa_attempts"] = essais
@@ -264,12 +251,18 @@ def api_mfa_confirmer():
 
     recup = None
     if not u["mfa_actif"]:
-        recup = _generer_codes_secours(lg)
-        db().execute("UPDATE users SET mfa_actif=1, mfa_confirme=1, mfa_secret=? WHERE id=?",
-                     (u["mfa_secret"], u["id"]))
+        recup = mfa.generer_codes_secours(lg)
+        db().execute("UPDATE users SET mfa_actif=1, mfa_confirme=1 WHERE id=?", (u["id"],))
         db().commit()
         u = db().execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
         audit(lg, "mfa-active", "totp", "OK")
+        notifications.envoyer_email(
+            u["email"], "MboaPilot : authentification activée",
+            "Bonjour " + u["nom"] + ",\n\nVotre authentification à deux facteurs est active. "
+            "Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
+            "mfa-activation",
+        )
+    audit(lg, "mfa-verif", moyen, "OK")
     _ouvrir_session(u)
     rep = {"user": session_user()}
     if recup:
@@ -285,14 +278,17 @@ def api_mfa_demande():
         return jsonify({"message": "Session expirée. Reconnectez-vous.", "code": "session"}), 401
     if not rate_limit("mfa-envoi:" + lg, 5, 600):
         return jsonify({"message": "Trop de demandes de code. Réessayez dans 10 minutes.", "code": "rate"}), 429
-    code = f"{secrets.randbelow(900000) + 100000:06d}"
-    exp = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-    cx = db()
-    cx.execute("UPDATE mfa_codes SET utilise=1 WHERE login=? AND utilise=0", (lg,))
-    cx.execute("INSERT INTO mfa_codes(login,code,expire) VALUES(?,?,?)", (lg, code, exp))
-    cx.commit()
-    audit(lg, "mfa-reenvoi", "email-simule", "OK")
-    rep = {"ok": True, "message": "Un code de vérification a été généré pour l'email du compte."}
+    code = mfa.generer_code_email(lg)
+    u = db().execute("SELECT email FROM users WHERE login=?", (lg,)).fetchone()
+    if u and u["email"]:
+        notifications.envoyer_email(
+            u["email"], "Votre code de vérification MboaPilot",
+            "Votre code de vérification est " + code + ". Il expire dans 10 minutes. "
+            "Si vous n'avez pas demandé ce code, ignorez ce message.",
+            "mfa-code-email",
+        )
+    audit(lg, "mfa-reenvoi", "email", "OK")
+    rep = {"ok": True, "message": "Un code de vérification a été envoyé à l'email du compte."}
     if DEMO:
         rep["code_demo"] = code
     return jsonify(rep)
@@ -307,22 +303,21 @@ def api_mfa_etat():
     u = db().execute("SELECT * FROM users WHERE login=? AND actif=1", (lg,)).fetchone()
     if not u:
         return jsonify({"message": "Compte introuvable.", "code": "auth"}), 401
-    secret = _secret_utilisateur(u)
-    if secret != u["mfa_secret"]:
-        db().execute("UPDATE users SET mfa_secret=? WHERE id=?", (secret, u["id"]))
-        db().commit()
+    secret = mfa.secret_utilisateur(u)
+    u = db().execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     mode = "totp" if u["mfa_actif"] else "setup"
     rep = {
         "mfa_required": True, "mode": mode, "login": lg, "nom": u["nom"],
         "email_masque": _mask_email(u["email"]),
-        "recovery_disponible": _codes_restants(lg) > 0,
+        "recovery_disponible": mfa.codes_restants(lg) > 0,
+        "email_code_disponible": bool(u["email"]),
         "expire_minutes": max(0, 10 - int((time.time() - float(session.get("pre_mfa_started", time.time()))) // 60)),
     }
     if mode == "setup":
         rep.update({"otpauth_url": _uri_totp(lg, secret), "secret": secret,
                     "qr_url": "/api/auth/mfa/qr"})
     if DEMO:
-        rep["code_demo"] = pyotp.TOTP(secret).now()
+        rep["code_demo"] = mfa.code_courant(secret, u["mfa_drift"])
     return jsonify(rep)
 
 
@@ -338,7 +333,7 @@ def api_mfa_qr():
         u = db().execute("SELECT mfa_secret FROM users WHERE login=?", (login,)).fetchone()
         if not u:
             return jsonify({"message": "Compte introuvable."}), 404
-        secret = u["mfa_secret"] or _secret_utilisateur(u)
+        secret = mfa.dechiffrer(u["mfa_secret"]) or mfa.secret_utilisateur(u)
     uri = _uri_totp(login, secret)
     try:
         import qrcode
@@ -407,6 +402,16 @@ def api_reset_request():
                      (lg, hashlib.sha256(tok.encode()).hexdigest(), exp))
         db().commit()
         audit(lg, "reset-demande", "password", "OK")
+        lu = db().execute("SELECT email FROM users WHERE login=?", (lg,)).fetchone()
+        if lu and lu["email"]:
+            url = "/reset/" + tok
+            notifications.envoyer_email(
+                lu["email"], "Réinitialisation de votre mot de passe MboaPilot",
+                "Bonjour,\n\nUtilisez ce lien pour choisir un nouveau mot de passe : " + url +
+                "\n\nCe lien expire dans 30 minutes et ne peut être utilisé qu'une fois. "
+                "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
+                "reset-password",
+            )
         if DEMO:
             lien = f"/reset/{tok}"
     return jsonify({"ok": True, "message": message, "lien": lien})
@@ -445,7 +450,7 @@ def api_security():
         "login": u["login"], "nom": u["nom"], "email": _mask_email(u["email"]),
         "email_complet": u["email"], "telephone": u["telephone"], "role": u["role"],
         "perimetre": u["perimetre"], "mfa_actif": bool(u["mfa_actif"]),
-        "codes_secours_restants": _codes_restants(u["login"]),
+        "codes_secours_restants": mfa.codes_restants(u["login"]),
         "derniere_connexion": u["derniere_connexion"], "cree_le": u["cree_le"],
         "mot_de_passe_maj": u["mot_de_passe_maj"],
     })
@@ -478,72 +483,100 @@ def api_password():
 
 
 @bp.route("/api/auth/mfa/activer", methods=["POST"])
-@login_required
+@step_up_required
 def api_mfa_activer():
     d = request.get_json(force=True, silent=True) or {}
     u = db().execute("SELECT * FROM users WHERE login=?", (session["user"],)).fetchone()
     if not verifier_mot_de_passe(u, d.get("password") or ""):
         return jsonify({"message": "Mot de passe incorrect."}), 401
     if u["mfa_actif"]:
-        code = re.sub(r"\s", "", str(d.get("code") or ""))
-        if not pyotp.TOTP(u["mfa_secret"]).verify(code, valid_window=1):
+        ok, _ = mfa.verifier_totp(u, d.get("code") or "")
+        if not ok:
             return jsonify({"message": "Code TOTP actuel requis pour remplacer l'authenticator."}), 401
-    secret = pyotp.random_base32()
+    secret = mfa.nouvelle_graine()
     session["mfa_pending_secret"] = secret
     return jsonify({"ok": True, "secret": secret, "otpauth_url": _uri_totp(u["login"], secret),
                     "qr_url": "/api/auth/mfa/qr"})
 
 
 @bp.route("/api/auth/mfa/confirmer-activation", methods=["POST"])
-@login_required
+@step_up_required
 def api_mfa_confirmer_activation():
     d = request.get_json(force=True, silent=True) or {}
     secret = session.get("mfa_pending_secret")
     if not secret:
         return jsonify({"message": "Aucun enrôlement en cours."}), 400
     code = re.sub(r"\s", "", str(d.get("code") or ""))
-    if not pyotp.TOTP(secret).verify(code, valid_window=1):
+    maintenant = int(time.time() // 30)
+    totp = pyotp.TOTP(secret, interval=30)
+    if not any(hmac.compare_digest(totp.at((maintenant - dec) * 30), code) for dec in (0, 1)):
         return jsonify({"message": "Code incorrect. Vérifiez l'heure de votre téléphone."}), 401
-    db().execute("UPDATE users SET mfa_secret=?, mfa_actif=1, mfa_confirme=1 WHERE login=?",
-                 (secret, session["user"]))
+    db().execute("""UPDATE users SET mfa_secret=?, mfa_actif=1, mfa_confirme=1,
+                    mfa_last_step=-1, mfa_drift=0 WHERE login=?""",
+                 (mfa.chiffrer(secret), session["user"]))
     db().commit()
     session.pop("mfa_pending_secret", None)
-    codes = _generer_codes_secours(session["user"])
+    codes = mfa.generer_codes_secours(session["user"])
+    u = db().execute("SELECT email,nom FROM users WHERE login=?", (session["user"],)).fetchone()
+    if u and u["email"]:
+        notifications.envoyer_email(
+            u["email"], "Authenticator MboaPilot remplacé",
+            "Bonjour " + u["nom"] + ",\n\nVotre authenticator a été remplacé. "
+            "Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
+            "mfa-rotate",
+        )
     audit(session["user"], "mfa-rotate", "totp", "OK")
     return jsonify({"ok": True, "recovery_codes": codes,
                     "message": "Authenticator activé. Conservez ces codes de secours hors ligne."})
 
 
 @bp.route("/api/auth/mfa/desactiver", methods=["POST"])
-@login_required
+@step_up_required
 def api_mfa_desactiver():
-    if not DEMO and session.get("role") == "Admin":
-        return jsonify({"message": "La MFA est obligatoire pour les administrateurs.", "code": "policy"}), 403
+    if MFA_OBLIGATOIRE and mfa.mfa_requise(session.get("role")):
+        return jsonify({"message": "La MFA est obligatoire pour ce rôle.", "code": "policy"}), 403
     d = request.get_json(force=True, silent=True) or {}
     u = db().execute("SELECT * FROM users WHERE login=?", (session["user"],)).fetchone()
     if not verifier_mot_de_passe(u, d.get("password") or ""):
         return jsonify({"message": "Mot de passe incorrect."}), 401
-    code = re.sub(r"\s", "", str(d.get("code") or ""))
-    if u["mfa_actif"] and not pyotp.TOTP(u["mfa_secret"]).verify(code, valid_window=1):
-        return jsonify({"message": "Code TOTP incorrect."}), 401
+    if u["mfa_actif"]:
+        ok, _ = mfa.verifier_totp(u, d.get("code") or "")
+        if not ok:
+            return jsonify({"message": "Code TOTP incorrect."}), 401
     db().execute("UPDATE users SET mfa_actif=0, mfa_confirme=0 WHERE login=?", (u["login"],))
     db().execute("DELETE FROM recovery_codes WHERE login=?", (u["login"],))
     db().commit()
+    if u["email"]:
+        notifications.envoyer_email(
+            u["email"], "Authentification à deux facteurs désactivée",
+            "Bonjour " + u["nom"] + ",\n\nLa MFA de votre compte a été désactivée. "
+            "Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
+            "mfa-desactive",
+        )
     audit(u["login"], "mfa-desactive", "totp", "OK")
     return jsonify({"ok": True, "message": "MFA désactivée. Elle sera reproposée à la prochaine connexion."})
 
 
 @bp.route("/api/auth/mfa/codes-secours", methods=["POST"])
-@login_required
+@step_up_required
 def api_codes_secours():
     d = request.get_json(force=True, silent=True) or {}
     u = db().execute("SELECT * FROM users WHERE login=?", (session["user"],)).fetchone()
     if not verifier_mot_de_passe(u, d.get("password") or ""):
         return jsonify({"message": "Mot de passe incorrect."}), 401
-    code = re.sub(r"\s", "", str(d.get("code") or ""))
-    if u["mfa_actif"] and not pyotp.TOTP(u["mfa_secret"]).verify(code, valid_window=1):
-        return jsonify({"message": "Code TOTP incorrect."}), 401
-    codes = _generer_codes_secours(u["login"])
+    if u["mfa_actif"]:
+        ok, _ = mfa.verifier_totp(u, d.get("code") or "")
+        if not ok:
+            return jsonify({"message": "Code TOTP incorrect."}), 401
+    codes = mfa.generer_codes_secours(u["login"])
+    if u["email"]:
+        notifications.envoyer_email(
+            u["email"], "Nouveaux codes de secours MboaPilot",
+            "Bonjour " + u["nom"] + ",\n\nDix nouveaux codes de secours ont été générés. "
+            "Les anciens ne fonctionnent plus. Si vous n'êtes pas à l'origine de cette action, "
+            "contactez immédiatement l'administrateur.",
+            "mfa-codes",
+        )
     audit(u["login"], "mfa-codes-secours", "totp", "OK")
     return jsonify({"recovery_codes": codes})
 
@@ -597,7 +630,8 @@ def api_users_post():
         try:
             cx.execute("""INSERT INTO users(login,nom,role,perimetre,hash,email,mfa_secret,
                           mfa_actif,mfa_confirme,cree_le) VALUES(?,?,?,?,?,?,?,0,0,datetime('now'))""",
-                       (login, nom, role, perim, hash_password(pwd), email, pyotp.random_base32()))
+                       (login, nom, role, perim, hash_password(pwd), email,
+                        mfa.chiffrer(mfa.nouvelle_graine())))
             cx.commit()
         except Exception:
             return jsonify({"message": "Login ou email déjà existant."}), 400
@@ -661,7 +695,9 @@ def api_users_post():
         if login == moi:
             return jsonify({"message": "Utilisez votre page Mon compte pour changer votre MFA."}), 400
         cx.execute("""UPDATE users SET mfa_secret=?, mfa_actif=0, mfa_confirme=0,
-                      session_version=session_version+1 WHERE id=?""", (pyotp.random_base32(), u["id"]))
+                      mfa_last_step=-1, mfa_drift=0,
+                      session_version=session_version+1 WHERE id=?""",
+                   (mfa.chiffrer(mfa.nouvelle_graine()), u["id"]))
         cx.execute("DELETE FROM recovery_codes WHERE login=?", (login,))
         cx.commit()
         audit(moi, "user-reset-mfa", login, "OK")
@@ -690,23 +726,17 @@ def seed_demo_users():
             cx.execute("""INSERT INTO users(login,nom,role,perimetre,hash,email,mfa_secret,
                           mfa_actif,mfa_confirme,cree_le) VALUES(?,?,?,?,?,?,?,1,1,datetime('now'))""",
                        (login, nom, role, perim, hash_password(pwd), DEMO_EMAILS[login],
-                        pyotp.random_base32()))
+                        mfa.chiffrer(mfa.nouvelle_graine())))
         else:
             if not row["mfa_secret"]:
                 cx.execute("UPDATE users SET mfa_secret=?, mfa_actif=1, mfa_confirme=1 WHERE id=?",
-                           (pyotp.random_base32(), row["id"]))
+                           (mfa.chiffrer(mfa.nouvelle_graine()), row["id"]))
             if row["email"] is None:
                 cx.execute("UPDATE users SET email=? WHERE id=?", (DEMO_EMAILS.get(login), row["id"]))
-    # Codes de secours pour les comptes historiques (hachés, jamais affichés ici).
-    for login in DEMO_MDP:
-        if not cx.execute("SELECT 1 FROM recovery_codes WHERE login=?", (login,)).fetchone():
-            for _ in range(10):
-                brut = secrets.token_hex(5).upper()
-                code = brut[:5] + "-" + brut[5:]
-                cx.execute("INSERT INTO recovery_codes(login,code_hash) VALUES(?,?)",
-                           (login, _hash_code(code)))
     cx.commit()
     cx.close()
 
 
-seed_demo_users()
+if DEMO:
+    seed_demo_users()
+

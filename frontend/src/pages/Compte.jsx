@@ -16,6 +16,37 @@ import { api, dateFR } from "../api";
 import { useAuth } from "../auth";
 import { Badge, CopyButton, Modal, PageHead, PasswordStrength, Spinner, Toast } from "../components";
 
+function b64url(buffer) {
+  const octets = new Uint8Array(buffer);
+  let binaire = "";
+  for (const o of octets) binaire += String.fromCharCode(o);
+  return btoa(binaire).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeB64url(texte) {
+  const pad = "=".repeat((4 - (texte.length % 4)) % 4);
+  const binaire = atob(texte.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  return Uint8Array.from(binaire, (c) => c.charCodeAt(0));
+}
+
+function prepareCredential(credential) {
+  const response = credential.response;
+  return {
+    id: credential.id,
+    rawId: b64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: b64url(response.clientDataJSON),
+      attestationObject: response.attestationObject ? b64url(response.attestationObject) : undefined,
+      authenticatorData: response.authenticatorData ? b64url(response.authenticatorData) : undefined,
+      signature: response.signature ? b64url(response.signature) : undefined,
+      userHandle: response.userHandle ? b64url(response.userHandle) : undefined,
+    },
+    clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+    transports: response.getTransports ? response.getTransports() : undefined,
+  };
+}
+
 function telechargerCodes(codes, login) {
   const texte = [
     "MboaPilot — codes de secours MFA",
@@ -57,12 +88,16 @@ export default function Compte() {
   const [codesModal, setCodesModal] = useState(false);
   const [disableModal, setDisableModal] = useState(false);
   const [disableForm, setDisableForm] = useState({ password: "", code: "" });
+  const [passkeys, setPasskeys] = useState([]);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
 
   const charger = useCallback(async () => {
     setChargement(true);
     try {
       const r = await api.get("/api/auth/security");
       setSecu(r);
+      const p = await api.get("/api/webauthn/credentials").catch(() => ({ credentials: [] }));
+      setPasskeys(p.credentials || []);
     } catch (ex) {
       setToast({ message: ex.message, tone: "error" });
     } finally {
@@ -71,6 +106,42 @@ export default function Compte() {
   }, []);
 
   useEffect(() => { charger(); }, [charger]);
+
+  const ajouterPasskey = async () => {
+    if (!window.PublicKeyCredential) {
+      message("Ce navigateur ne prend pas en charge les passkeys.", "error");
+      return;
+    }
+    setPasskeyBusy(true);
+    try {
+      const options = await api.post("/api/webauthn/register-options", {});
+      options.challenge = decodeB64url(options.challenge);
+      options.user.id = decodeB64url(options.user.id);
+      if (options.excludeCredentials) {
+        options.excludeCredentials = options.excludeCredentials.map((c) => ({
+          ...c, id: decodeB64url(c.id),
+        }));
+      }
+      const credential = await navigator.credentials.create({ publicKey: options });
+      if (!credential) throw new Error("Création annulée.");
+      await api.post("/api/webauthn/register-verify", prepareCredential(credential));
+      message("Passkey enregistrée. Vous pouvez vous connecter avec elle.");
+      await charger();
+    } catch (ex) {
+      message(ex.message || "Impossible d'enregistrer la passkey.", "error");
+    }
+    setPasskeyBusy(false);
+  };
+
+  const supprimerPasskey = async (id) => {
+    try {
+      await api.del("/api/webauthn/credentials/" + id);
+      message("Passkey supprimée.");
+      await charger();
+    } catch (ex) {
+      message(ex.message, "error");
+    }
+  };
 
   const message = (txt, tone = "success") => setToast({ message: txt, tone });
 
@@ -326,6 +397,29 @@ export default function Compte() {
                   <div><b>Anti-rejeu</b><span>Jeton CSRF sur toutes les écritures</span></div>
                 </div>
               </div>
+            </section>
+
+            <section className="account-card">
+              <h2><VpnKeyIcon /> Passkeys</h2>
+              <p className="hint">Connectez-vous avec Face ID, Touch ID ou une clé de sécurité. Résistant au phishing.</p>
+              <div className="session-list">
+                {passkeys.length === 0 && (
+                  <div className="session-row"><span /><div><b>Aucune passkey</b><span>Ajoutez-en une pour remplacer le code TOTP au quotidien.</span></div></div>
+                )}
+                {passkeys.map((p) => (
+                  <div className="session-row" key={p.id}>
+                    <VpnKeyIcon />
+                    <div>
+                      <b>{p.device_type === "single_device" ? "Clé de sécurité" : "Passkey synchronisée"}</b>
+                      <span>Ajoutée le {dateFR(p.cree_le, true)}</span>
+                    </div>
+                    <button className="btn btn-ghost" onClick={() => supprimerPasskey(p.id)}>Retirer</button>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-brand" onClick={ajouterPasskey} disabled={passkeyBusy}>
+                <VpnKeyIcon /> {passkeyBusy ? "Enregistrement…" : "Ajouter une passkey"}
+              </button>
             </section>
 
             <section className="account-card">

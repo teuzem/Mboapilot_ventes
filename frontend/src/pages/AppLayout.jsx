@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import CloudSyncIcon from "@mui/icons-material/CloudSync";
 import GroupIcon from "@mui/icons-material/Group";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -14,6 +15,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { Logo } from "../components";
+import NotificationBell from "../components/NotificationBell";
 import { useAuth } from "../auth";
 
 const SECTIONS = [
@@ -23,6 +25,7 @@ const SECTIONS = [
       { to: "/app", end: true, label: "Tableau de bord", icon: <DashboardIcon /> },
       { to: "/app/saisie", label: "Saisie vente", icon: <PointOfSaleIcon />, perm: "sales.write" },
       { to: "/app/imports", label: "Collecte & imports", icon: <CloudUploadIcon />, perm: "imports.read" },
+      { to: "/app/connecteurs", label: "Connecteurs & ETL", icon: <CloudSyncIcon />, perm: "imports.write" },
     ],
   },
   {
@@ -119,6 +122,9 @@ export default function AppLayout() {
       {ouvert && <div className="drawer-back" onClick={() => setOuvert(false)} aria-hidden="true" />}
 
       <main className="main app-main">
+        <div className="app-topbar">
+          <NotificationBell />
+        </div>
         <div className="mobile-bar">
           <button className="icon-btn" onClick={() => setOuvert(true)} aria-label="Ouvrir le menu"><MenuIcon /></button>
           <Logo />

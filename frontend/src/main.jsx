@@ -28,7 +28,9 @@ import Compte from "./pages/Compte";
 import AdminPartners from "./pages/AdminPartners";
 import Audit from "./pages/Audit";
 import Rapport from "./pages/Rapport";
+import Connecteurs from "./pages/Connecteurs";
 import { Spinner } from "./components";
+import { activerNotifications } from "./push";
 
 function ScrollTop() {
   const { pathname, hash } = useLocation();
@@ -58,6 +60,14 @@ function Garde({ children, perm }) {
   return children;
 }
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
+activerNotifications().catch(() => {});
+
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
     <AuthProvider>
@@ -84,6 +94,7 @@ createRoot(document.getElementById("root")).render(
           <Route index element={<Dashboard />} />
           <Route path="saisie" element={<Garde perm="sales.write"><Saisie /></Garde>} />
           <Route path="imports" element={<Garde perm="imports.read"><Imports /></Garde>} />
+          <Route path="connecteurs" element={<Garde perm="imports.write"><Connecteurs /></Garde>} />
           <Route path="partenaires" element={<Garde perm="partners.manage"><AdminPartners /></Garde>} />
           <Route path="users" element={<Garde perm="users.manage"><Users /></Garde>} />
           <Route path="audit" element={<Garde perm="audit.view"><Audit /></Garde>} />

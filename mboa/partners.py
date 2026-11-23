@@ -39,27 +39,38 @@ def _partenaire_courant():
 
 
 def _code_partenaire(p):
+    from . import mfa, notifications
     code = f"{secrets.randbelow(900000) + 100000:06d}"
     exp = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    cle = "partner:" + p["email"]
     cx = db()
-    cx.execute("UPDATE mfa_codes SET utilise=1 WHERE login=? AND utilise=0", ("partner:" + p["email"],))
+    cx.execute("UPDATE mfa_codes SET utilise=1 WHERE login=? AND utilise=0", (cle,))
     cx.execute("INSERT INTO mfa_codes(login,code,expire) VALUES(?,?,?)",
-               ("partner:" + p["email"], code, exp))
+               (cle, mfa.hash_code_secours(code), exp))
     cx.commit()
-    audit("partenaire:" + p["email"], "otp-envoi", "email-simule", "OK")
+    notifications.envoyer_email(
+        p["email"], "Votre code d'accès partenaire MboaPilot",
+        "Bonjour " + (p["contact_nom"] or "") + ",\n\nVotre code d'accès est " + code +
+        ". Il expire dans 10 minutes. Si vous n'avez pas demandé ce code, ignorez ce message.",
+        "partner-otp",
+    )
+    audit("partenaire:" + p["email"], "otp-envoi", "email", "OK")
     return code
 
 
 def _verifier_code_partenaire(p, code):
+    from . import mfa
+    import hmac
+    cle = "partner:" + p["email"]
     r = db().execute("SELECT * FROM mfa_codes WHERE login=? AND utilise=0 ORDER BY id DESC LIMIT 1",
-                     ("partner:" + p["email"],)).fetchone()
+                     (cle,)).fetchone()
     if not r:
         return False
     if (r["tentatives"] or 0) >= 5 or datetime.utcnow() > datetime.fromisoformat(r["expire"]):
         db().execute("UPDATE mfa_codes SET utilise=1 WHERE id=?", (r["id"],))
         db().commit()
         return False
-    if (code or "").strip() != r["code"]:
+    if not hmac.compare_digest(mfa.hash_code_secours(str(code or "")), r["code"]):
         db().execute("UPDATE mfa_codes SET tentatives=tentatives+1 WHERE id=?", (r["id"],))
         db().commit()
         return False
@@ -174,6 +185,8 @@ def api_partenaire_inscription():
     session["partner_email"] = email
     session["partner_nom"] = contact
     session["partner_started"] = time.time()
+    session["partner_sv"] = 1
+    session["partner_last_seen"] = time.time()
     p = cx.execute("SELECT * FROM partners WHERE id=?", (pid,)).fetchone()
     return jsonify({"ok": True, "message": "Compte partenaire créé. Votre logo sera publié après validation.",
                     "partenaire": _partner_json(p), "suivi_url": "/partenaires/suivi/" + token,
@@ -220,7 +233,9 @@ def api_partenaire_mfa():
     session["partner_email"] = p["email"]
     session["partner_nom"] = p["contact_nom"]
     session["partner_started"] = time.time()
-    audit("partenaire:" + p["email"], "connexion-partenaire-mfa", "email-simule", "OK")
+    session["partner_sv"] = int(p["session_version"] or 1)
+    session["partner_last_seen"] = time.time()
+    audit("partenaire:" + p["email"], "connexion-partenaire-mfa", "email", "OK")
     return jsonify({"partenaire": _partner_json(p)})
 
 
@@ -345,6 +360,18 @@ def api_partenaire_demo():
     db().execute("""UPDATE partners SET demo_date=?,demo_creneau=?,demo_statut='demande',
                     maj_le=datetime('now') WHERE id=?""", (demo_date, creneau, p["id"]))
     db().commit()
+    from . import notifications
+    notifications.notifier_admin(
+        "Nouvelle demande de démo partenaire",
+        p["entreprise"] + " souhaite une démo le " + demo_date + " de " + creneau + ".",
+        "partner-demo-request",
+    )
+    notifications.envoyer_email(
+        p["email"], "MboaPilot : demande de démo enregistrée",
+        "Bonjour,\n\nVotre demande de démo pour le " + demo_date + " (" + creneau +
+        ") est enregistrée. Notre équipe vous confirmera le créneau.",
+        "partner-demo-ack",
+    )
     audit("partenaire:" + p["email"], "demo-replanifiee", f"{demo_date} {creneau}", "OK")
     return jsonify({"ok": True, "message": "Créneau demandé. L'équipe confirme sous 24h ouvrées."})
 
@@ -442,7 +469,17 @@ def api_partenaire_demo_admin(pid):
     statut = d.get("demo_statut") or "confirme"
     if statut not in ("demande", "confirme", "realise", "annule"):
         return jsonify({"message": "Statut de démo invalide."}), 400
-    db().execute("UPDATE partners SET demo_statut=?,maj_le=datetime('now') WHERE id=?", (statut, pid))
-    db().commit()
+    cx = db()
+    p = cx.execute("SELECT entreprise,email FROM partners WHERE id=?", (pid,)).fetchone()
+    if not p:
+        return jsonify({"message": "Partenaire introuvable."}), 404
+    cx.execute("UPDATE partners SET demo_statut=?,maj_le=datetime('now') WHERE id=?", (statut, pid))
+    cx.commit()
+    from . import notifications
+    notifications.envoyer_email(
+        p["email"], "MboaPilot : votre démo a été mise à jour",
+        "Bonjour,\n\nLe statut de votre démo est désormais : " + statut + ".",
+        "partner-demo",
+    )
     audit(session["user"], "partenaire-demo", str(pid), statut)
     return jsonify({"ok": True, "message": "Démo mise à jour."})

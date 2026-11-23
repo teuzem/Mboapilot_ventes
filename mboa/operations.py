@@ -33,6 +33,8 @@ def _filtre_role_region(region):
 @bp.route("/api/ventes-manuelle", methods=["POST"])
 @perm_required("sales.write")
 def vente_manuelle():
+    if not rate_limit("saisie:" + (session.get("user") or "?"), 60, 60):
+        return jsonify({"message": "Trop de saisies. Patientez une minute.", "code": "rate"}), 429
     d = request.get_json(force=True, silent=True) or {}
     cx = db()
     produit = nettoyer_texte(d.get("produit"), 120)
@@ -79,41 +81,89 @@ def vente_manuelle():
     except Exception:
         return jsonify({"message": "Référence dupliquée, réessayez."}), 409
     audit(session["user"], "saisie-manuelle", ref, "OK", f"{montant} FCFA / {region}")
+    from .schema import evenement
+    evenement("vente-manuelle", ref, f"{montant} FCFA / {region}")
     return jsonify({"ok": True, "ref": ref, "montant": montant, "region": region})
 
 
 @bp.route("/api/pos-push", methods=["POST"])
 @perm_required("sales.write")
 def pos_push():
+    """Réception d'une vraie transaction de caisse.
+
+    Le corps peut contenir une transaction réelle (référence, produit, quantité,
+    prix, région, date). En mode démo seulement, un corps vide génère une vente
+    d'exemple explicitement marquée `simulation` dans la réponse et la base.
+    """
+    from .config import DEMO
+    from .schema import evenement
+    if not rate_limit("pos:" + (session.get("user") or "?"), 60, 60):
+        return jsonify({"message": "Trop d'encaissements. Patientez une minute.", "code": "rate"}), 429
     cx = db()
+    d = request.get_json(force=True, silent=True) or {}
     role, perim = session.get("role"), session.get("perimetre")
-    where, params = "", []
-    if role not in ("Admin", "Auditeur") and perim != "National":
-        where, params = " AND region=?", [perim]
-    prods = cx.execute(
-        f"SELECT produit, famille, prix_unit, region, ville, point_vente FROM sales WHERE 1=1{where} ORDER BY RANDOM() LIMIT 1",
-        params).fetchone()
-    if not prods:
-        return jsonify({"message": "Aucune donnée source pour simuler une caisse."}), 400
-    ref = f"TX-POS-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
-    qte = random.choice([1, 1, 2, 3])
-    montant = round(qte * prods["prix_unit"])
-    cout = round(montant * (1 - TAUX_MARGE.get(prods["famille"], 0.25)))
+    simulation = not bool(d.get("ref") and d.get("produit"))
+    if simulation and not DEMO:
+        return jsonify({"message": "Une transaction réelle est requise hors mode démo.", "code": "demo"}), 400
+
+    if simulation:
+        where, params = "", []
+        if role not in ("Admin", "Auditeur") and perim != "National":
+            where, params = " AND region=?", [perim]
+        prods = cx.execute(
+            f"SELECT produit, famille, prix_unit, region, ville, point_vente FROM sales WHERE 1=1{where} ORDER BY RANDOM() LIMIT 1",
+            params).fetchone()
+        if not prods:
+            return jsonify({"message": "Aucune donnée source pour simuler une caisse."}), 400
+        ref = f"TX-POS-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
+        qte = random.choice([1, 1, 2, 3])
+        prix = prods["prix_unit"]
+        remise = 0
+        region = prods["region"]
+        produit, famille = prods["produit"], prods["famille"]
+        ville, pdv = prods["ville"], prods["point_vente"] or "POS Live"
+        jour = ref_date(cx).isoformat()
+    else:
+        ref = nettoyer_texte(d.get("ref"), 120)
+        produit = nettoyer_texte(d.get("produit"), 120)
+        found = cx.execute("SELECT famille, prix_unit FROM sales WHERE produit=? LIMIT 1", (produit,)).fetchone()
+        if not found:
+            return jsonify({"message": "Produit inconnu."}), 400
+        famille = found["famille"]
+        try:
+            qte = int(d.get("qte") or 0)
+            prix = float(d.get("prix_unit") or found["prix_unit"])
+            remise = float(d.get("remise_pct") or 0)
+        except (ValueError, TypeError):
+            return jsonify({"message": "Quantité ou prix invalide."}), 400
+        if qte <= 0 or prix <= 0 or not 0 <= remise <= 50:
+            return jsonify({"message": "Quantité, prix ou remise invalide."}), 400
+        region = nettoyer_texte(d.get("region"), 40) or perim or "National"
+        if role in ("Commercial", "Manager") and perim != "National":
+            region = perim
+        if region not in REGIONS:
+            return jsonify({"message": "Région invalide."}), 400
+        ville = nettoyer_texte(d.get("ville"), 60) or region
+        pdv = nettoyer_texte(d.get("point_vente"), 80) or "POS"
+        jour = nettoyer_texte(d.get("jour"), 10) or ref_date(cx).isoformat()
+
+    montant = round(qte * prix * (1 - remise / 100))
+    cout = d.get("cout_unit")
+    if cout is None:
+        cout = round(montant * (1 - TAUX_MARGE.get(famille, 0.25)))
     try:
-        # On écrit sur la journée de référence du jeu de données pour que la
-        # caisse live soit immédiatement visible dans le tableau de bord.
-        jour_live = ref_date(cx).isoformat()
         cx.execute("""INSERT INTO sales(ref,jour,canal,region,ville,point_vente,vendeur,produit,famille,
                       qte,prix_unit,remise_pct,montant,cout_unit,source,import_created)
                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pos-live',0)""",
-                   (ref, jour_live, "POS", prods["region"], prods["ville"],
-                    prods["point_vente"] or "POS Live", session.get("nom", session["user"]),
-                    prods["produit"], prods["famille"], qte, prods["prix_unit"], 0, montant, cout))
+                   (ref, jour, "POS", region, ville, pdv, session.get("nom", session["user"]),
+                    produit, famille, qte, prix, remise, montant, cout))
         cx.commit()
-        audit(session["user"], "pos-push", ref, "OK", f"{montant} FCFA")
-        return jsonify({"ok": True, "ref": ref, "montant": montant})
     except Exception:
-        return jsonify({"ok": False, "doublon": True})
+        return jsonify({"ok": False, "message": "Référence déjà existante.", "doublon": True}), 409
+    audit(session["user"], "pos-push", ref, "OK", f"{montant} FCFA")
+    evenement("pos", ref, f"{montant} FCFA / {region}" + (" (démo)" if simulation else ""))
+    return jsonify({"ok": True, "ref": ref, "montant": montant,
+                    "simulation": simulation, "jour": jour})
 
 
 # ---------- Exports ----------
@@ -243,5 +293,11 @@ def api_contact():
                  (nom, nettoyer_texte(d.get("entreprise"), 120), email,
                   nettoyer_texte(d.get("tel"), 40), nettoyer_texte(d.get("profil"), 80), message))
     db().commit()
+    from . import notifications
+    notifications.notifier_admin(
+        "Nouveau message depuis le site MboaPilot",
+        nom + " (" + email + ") : " + message[:600],
+        "contact",
+    )
     audit("visiteur", "contact", email, "OK")
     return jsonify({"ok": True, "message": "Message reçu. Réponse sous 24h ouvrées."})

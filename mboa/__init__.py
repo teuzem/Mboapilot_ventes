@@ -1,37 +1,44 @@
 # -*- coding: utf-8 -*-
 """MboaPilot V2 — application Flask (fabrique, sécurité globale, serving SPA)."""
 import hmac
-import os
 import secrets
 import time
 from datetime import timedelta
 
 from flask import Flask, abort, jsonify, request, send_from_directory, session
 
-from .core import (DIST, DEMO, LOGOS_DIR, MAX_UPLOAD, SESSION_MAX_HEURES,
-                   SESSION_MINUTES, db, init_app, migrate)
+from .config import (COOKIE_SECURE, DEBUG, SECRET, SESSION_MAX_HEURES,
+                     SESSION_MINUTES, valider_configuration)
+from .core import (BASE, DIST, DEMO, LOGOS_DIR, MAX_UPLOAD, db, init_app,
+                   migrate)
 
 
 def _secret_key():
-    p = DIST.parent.parent / ".mboa_secret"
-    if p.exists():
-        return p.read_text(encoding="utf-8").strip()
-    s = secrets.token_hex(32)
-    try:
-        p.write_text(s, encoding="utf-8")
-    except Exception:
-        pass
-    return s
+    """Clé de secours en développement uniquement. La production exige MBOA_SECRET."""
+    if SECRET:
+        return SECRET
+    if DEMO:
+        p = BASE / ".mboa_secret"
+        if p.exists():
+            return p.read_text(encoding="utf-8").strip()
+        s = secrets.token_hex(32)
+        try:
+            p.write_text(s, encoding="utf-8")
+        except Exception:
+            pass
+        return s
+    raise RuntimeError("MBOA_SECRET est obligatoire hors mode démo.")
 
 
 def create_app():
+    valider_configuration()
     app = Flask(__name__, static_folder=None)
-    app.secret_key = os.environ.get("MBOA_SECRET") or _secret_key()
+    app.secret_key = _secret_key()
     app.config.update(
         SESSION_COOKIE_NAME="mboa_session",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.environ.get("MBOA_COOKIE_SECURE", "0") == "1",
+        SESSION_COOKIE_SECURE=COOKIE_SECURE,
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=SESSION_MINUTES),
         MAX_CONTENT_LENGTH=MAX_UPLOAD,
     )
@@ -42,16 +49,31 @@ def create_app():
     init_app(app)
     migrate()
 
+    from .notifications import migrer as migrer_notifications
+    migrer_notifications()
+
+    from .mfa import migrer_schema as migrer_mfa
+    migrer_mfa()
+
+    from .schema import migrer as migrer_schema
+    migrer_schema()
+
     from .auth import bp as auth_bp
     from .dashboard import bp as dashboard_bp
     from .imports_studio import bp as imports_bp
     from .operations import bp as operations_bp
     from .partners import bp as partners_bp
+    from .extensions import bp as extensions_bp
+    from .etl import bp as etl_bp
+    from .rapports import bp as rapports_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(imports_bp)
     app.register_blueprint(operations_bp)
     app.register_blueprint(partners_bp)
+    app.register_blueprint(extensions_bp)
+    app.register_blueprint(etl_bp)
+    app.register_blueprint(rapports_bp)
 
     @app.before_request
     def garde_session_csrf():
@@ -77,6 +99,29 @@ def create_app():
             except Exception:
                 pass
             session["last_seen"] = maintenant
+            session.modified = True
+
+        if request.path.startswith("/api/") and session.get("partner_id"):
+            maintenant = time.time()
+            demarree = session.get("partner_started", maintenant)
+            derniere = session.get("partner_last_seen", maintenant)
+            expiree = (maintenant - derniere > SESSION_MINUTES * 60
+                       or maintenant - demarree > SESSION_MAX_HEURES * 3600)
+            if expiree:
+                session.clear()
+                return jsonify({"message": "Session partenaire expirée. Reconnectez-vous.",
+                                "code": "partner_session"}), 401
+            try:
+                p = db().execute(
+                    "SELECT session_version FROM partners WHERE id=?",
+                    (session["partner_id"],)).fetchone()
+                if not p or int(p["session_version"] or 1) != int(session.get("partner_sv", 1)):
+                    session.clear()
+                    return jsonify({"message": "Session partenaire invalidée. Reconnectez-vous.",
+                                    "code": "partner_session"}), 401
+            except Exception:
+                pass
+            session["partner_last_seen"] = maintenant
             session.modified = True
 
         # 2) Protection CSRF sur toutes les écritures API.
