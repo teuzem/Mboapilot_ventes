@@ -124,12 +124,9 @@ export default function AppLayout() {
 
       {ouvert && <div className="drawer-back" onClick={() => setOuvert(false)} aria-hidden="true" />}
 
+      <button className="mobile-menu" onClick={() => setOuvert(true)} aria-label="Ouvrir le menu"><MenuIcon /></button>
+
       <main className="main app-main">
-        <div className="mobile-bar">
-          <button className="icon-btn" onClick={() => setOuvert(true)} aria-label="Ouvrir le menu"><MenuIcon /></button>
-          <Logo />
-          <Link to="/app/compte" className="mobile-avatar" aria-label="Mon compte">{initiales(user?.nom)}</Link>
-        </div>
         <Outlet />
       </main>
     </div>

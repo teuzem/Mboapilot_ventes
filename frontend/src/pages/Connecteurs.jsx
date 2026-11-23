@@ -404,7 +404,6 @@ export default function Connecteurs() {
 
       <header className="pq-titlebar">
         <div className="pq-title-left">
-          <span className="pq-mark">P</span>
           <b>Éditeur de requêtes</b>
           <span className="pq-subtitle">MboaPilot</span>
         </div>

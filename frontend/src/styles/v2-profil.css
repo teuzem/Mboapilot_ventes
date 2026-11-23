@@ -1,0 +1,85 @@
+/* Page profil : même niveau de finition que l'éditeur de requêtes. */
+.pf-shell { display:flex; flex-direction:column; height:100vh; width:100%; background:#eef1f6; overflow:hidden; color:#1f2735; }
+
+.pf-titlebar { display:flex; align-items:center; gap:9px; height:40px; padding:0 16px; background:#fbfcfe; border-bottom:1px solid #e8ebf2; flex:0 0 auto; }
+.pf-titlebar b { font-size:13px; font-weight:600; }
+.pf-titlebar span { font-size:11px; color:#9aa1af; }
+
+.pf-corps { display:flex; flex:1 1 auto; min-height:0; }
+
+.pf-rail { width:268px; flex:0 0 268px; background:#fff; border-right:1px solid #e2e6ef; display:flex; flex-direction:column; }
+.pf-identite { display:flex; flex-direction:column; align-items:center; padding:26px 18px 20px; border-bottom:1px solid #eef0f5; }
+.pf-avatar { position:relative; width:78px; height:78px; border-radius:50%; background:linear-gradient(135deg,#635bff,#00a36c); display:grid; place-items:center; cursor:pointer; overflow:hidden; }
+.pf-avatar span { color:#fff; font-size:24px; font-weight:700; }
+.pf-avatar img { width:100%; height:100%; object-fit:cover; }
+.pf-avatar input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.pf-camera { position:absolute; bottom:0; right:0; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; background:#fff; color:#4c43d6; box-shadow:0 2px 6px rgba(20,30,50,.18); }
+.pf-identite > b { margin-top:12px; font-size:14px; }
+.pf-identite > small { margin-top:3px; font-size:11px; color:#8b93a3; }
+.pf-badges { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:12px; }
+.pf-badges span { font-size:10px; padding:4px 9px; border-radius:20px; }
+.pf-badges .vert { background:#eaf8f1; color:#0a7a4b; }
+.pf-badges .orange { background:#fff4dc; color:#a15c00; }
+
+.pf-nav { display:flex; flex-direction:column; gap:3px; padding:14px 10px; }
+.pf-nav button { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border:0; border-radius:9px; background:transparent; color:#4c5568; font-size:12.5px; cursor:pointer; text-align:left; }
+.pf-nav button svg { font-size:19px; color:#6a7283; }
+.pf-nav button:hover { background:#f5f6fb; }
+.pf-nav button.actif { background:#eef0ff; color:#4c43d6; font-weight:600; }
+.pf-nav button.actif svg { color:#635bff; }
+.pf-pied { margin-top:auto; padding:14px 18px; border-top:1px solid #eef0f5; font-size:10.5px; color:#9aa1b0; }
+
+.pf-contenu { flex:1 1 auto; min-width:0; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:14px; }
+.pf-carte { background:#fff; border:1px solid #e2e6ef; border-radius:13px; padding:20px 22px; }
+.pf-carte-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.pf-carte-head h2 { display:flex; align-items:center; gap:9px; margin:0 0 4px; font-size:16px; }
+.pf-carte-head h2 svg { color:#635bff; font-size:20px; }
+.pf-carte-head p { margin:0; font-size:12px; color:#7b8393; }
+.pf-etat { font-size:10.5px; padding:5px 10px; border-radius:20px; white-space:nowrap; }
+.pf-etat.vert { background:#eaf8f1; color:#0a7a4b; }
+
+.pf-champs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }
+@media (max-width:720px){ .pf-champs { grid-template-columns:1fr; } }
+.pf-champs label { display:flex; flex-direction:column; gap:5px; font-size:11.5px; font-weight:600; color:#4a5263; }
+.pf-champs label.large { grid-column:1 / -1; }
+.pf-champs input, .pf-champs select, .pf-champs textarea { padding:9px 11px; border:1px solid #dfe3ec; border-radius:9px; font-size:12.5px; font-family:inherit; background:#fff; }
+.pf-champs input:focus, .pf-champs select:focus, .pf-champs textarea:focus { outline:0; border-color:#635bff; box-shadow:0 0 0 3px rgba(99,91,255,.1); }
+.pf-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:16px; }
+.pf-actions.large { grid-column:1 / -1; }
+.pf-bouton { display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border:1px solid #dfe3ec; border-radius:9px; background:#fff; color:#414a5b; font-size:12px; cursor:pointer; }
+.pf-bouton:hover { background:#f6f7fb; }
+.pf-bouton.plein { background:#635bff; border-color:#635bff; color:#fff; }
+.pf-bouton.plein:hover { background:#5249e8; }
+.pf-bouton:disabled { opacity:.5; cursor:not-allowed; }
+
+.pf-lignes { display:flex; flex-direction:column; margin-bottom:14px; }
+.pf-ligne { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #f1f2f6; font-size:12.5px; color:#414a5b; }
+.pf-ligne > svg { font-size:18px; color:#635bff; }
+.pf-ligne span { flex:1; }
+.pf-ligne em { font-style:normal; font-size:10.5px; color:#0a7a4b; }
+.pf-ligne small { font-size:10.5px; color:#9096a4; }
+.pf-ligne > div { display:flex; flex-direction:column; gap:2px; }
+.pf-vide { font-size:12px; color:#9aa1b0; }
+.pf-codes { margin-top:14px; padding:14px; border-radius:10px; background:#f8f9fc; }
+.pf-codes b { font-size:12px; }
+.pf-codes-grille { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:7px; margin:10px 0; }
+.pf-codes-grille code { padding:8px; background:#fff; border:1px solid #e5e7ef; border-radius:7px; font-size:11.5px; }
+.pf-verif { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.pf-verif input { flex:1; min-width:160px; padding:9px 11px; border:1px solid #dfe3ec; border-radius:9px; font-size:12.5px; }
+.pf-verif small { font-size:11px; color:#0a7a4b; }
+
+.pf-bascule { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #f1f2f6; font-size:12.5px; color:#414a5b; }
+.pf-bascule input { width:0; height:0; opacity:0; }
+.pf-bascule i { width:42px; height:24px; border-radius:14px; background:#d9dce5; position:relative; transition:background .2s; }
+.pf-bascule i:after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s; }
+.pf-bascule input:checked + i { background:#635bff; }
+.pf-bascule input:checked + i:after { transform:translateX(18px); }
+.pf-chargement { display:grid; place-items:center; height:100%; font-size:13px; color:#6a7283; }
+
+@media (max-width:980px){
+  .pf-rail { width:80px; flex-basis:80px; }
+  .pf-identite > b, .pf-identite > small, .pf-badges, .pf-nav button span, .pf-pied { display:none; }
+  .pf-identite { padding:16px 8px; }
+  .pf-avatar { width:52px; height:52px; }
+  .pf-nav button { justify-content:center; }
+}
