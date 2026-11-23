@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import { api, dateFR } from "../api";
 
-export default function NotificationBell() {
+export default function NotificationBell({ compact = false }) {
   const [liste, setListe] = useState([]);
   const [nonlues, setNonlues] = useState(0);
   const [ouvert, setOuvert] = useState(false);
@@ -43,7 +43,7 @@ export default function NotificationBell() {
   };
 
   return (
-    <div className="notif-bell" ref={ref}>
+    <div className={"notif-bell" + (compact ? " compact" : "")} ref={ref}>
       <button className="notif-btn" onClick={() => setOuvert(!ouvert)} aria-label="Notifications">
         <NotificationsIcon />
         {nonlues > 0 && <span className="notif-badge">{nonlues}</span>}

@@ -77,6 +77,7 @@ export default function AppLayout() {
       <aside className={"sidebar app-side" + (ouvert ? " open" : "")} aria-label="Navigation de l'espace client">
         <div className="side-brand">
           <Logo />
+          <NotificationBell compact />
           <button className="icon-btn side-close" onClick={() => setOuvert(false)} aria-label="Fermer le menu"><CloseIcon /></button>
         </div>
         <div className="side-scroll">
@@ -124,9 +125,6 @@ export default function AppLayout() {
       {ouvert && <div className="drawer-back" onClick={() => setOuvert(false)} aria-hidden="true" />}
 
       <main className="main app-main">
-        <div className="app-topbar">
-          <NotificationBell />
-        </div>
         <div className="mobile-bar">
           <button className="icon-btn" onClick={() => setOuvert(true)} aria-label="Ouvrir le menu"><MenuIcon /></button>
           <Logo />

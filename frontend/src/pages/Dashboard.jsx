@@ -186,8 +186,8 @@ export default function Dashboard() {
   return (
     <>
       <PageHead
-        eyebrow="Pilotage commercial · FCFA"
-        title={<>Bonjour {user?.nom?.split(" ")[0] || "à vous"}, voici votre réseau.</>}
+        eyebrow="Tableau de bord"
+        title="Ventes et performance"
         sub={
           <>
             <span className="live-dot" /> {user?.role}{user?.perimetre ? ` · ${user.perimetre}` : ""} · {periodeLabel}

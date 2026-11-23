@@ -96,12 +96,17 @@ def _lire_source(cfg):
             dossier = BASE / dossier
         motifs = cfg.get("motifs") or ["*.csv", "*.xlsx", "*.xls"]
         if typ == "excel":
-            motifs = ["*.xlsx", "*.xls"]
+            motifs = ["*.xlsx", "*.xls", "*.xlsm"]
         if typ == "pdf":
             motifs = ["*.pdf"]
+        if dossier.is_file():
+            fichiers = [dossier]
+        else:
+            fichiers = []
+            for motif in motifs:
+                fichiers += sorted(dossier.glob(motif))
         lignes = []
-        for motif in motifs:
-            for f in sorted(dossier.glob(motif)):
+        for f in fichiers:
                 if f.suffix.lower() in (".csv", ".txt"):
                     txt = f.read_text(encoding=cfg.get("encodage", "utf-8-sig"), errors="replace")
                     sep = cfg.get("separateur", ";")
@@ -338,11 +343,19 @@ def journaliser(cid, statut, lignes, rejets, message, duree):
     c.close()
 
 
+def preparer_etapes(cfg):
+    etapes = list(cfg.get("etapes") or [])
+    mapping = cfg.get("mapping") or {}
+    if mapping and not any(e.get("action") == "mapToSales" for e in etapes):
+        etapes.append({"action": "mapToSales", "mapping": mapping})
+    return etapes
+
+
 def executer(cid, cfg, source):
     t0 = time.time()
     try:
         brut = _lire_source(cfg)
-        transforme = appliquer_etapes(brut, cfg.get("etapes") or [])
+        transforme = appliquer_etapes(brut, preparer_etapes(cfg))
         ok, rejets, erreurs, duree = _inserer(transforme, source, cfg)
         statut = "Reussi" if not rejets else ("Partiel" if ok else "Echec")
         journaliser(cid, statut, ok, rejets, "; ".join(erreurs), duree)
@@ -417,7 +430,7 @@ def connecteurs_tester():
         return jsonify({"message": "Type de connecteur invalide."}), 400
     try:
         brut = _lire_source(cfg)
-        transforme = appliquer_etapes(brut, cfg.get("etapes") or [])
+        transforme = appliquer_etapes(brut, preparer_etapes(cfg))
         return jsonify({"ok": True, "lignes": len(transforme),
                         "apercu": transforme[:12], "colonnes": list((transforme[0] or {}).keys())[:40]})
     except Exception as exc:
@@ -448,6 +461,22 @@ def connecteurs_runs(cid):
                      (cid,)).fetchall()
     c.close()
     return jsonify({"runs": [dict(r) for r in rows]})
+
+
+@bp.route("/api/connecteurs/<int:cid>", methods=["DELETE"])
+@perm_required("imports.write")
+def connecteurs_delete(cid):
+    c = _cx()
+    r = c.execute("SELECT nom FROM connectors WHERE id=?", (cid,)).fetchone()
+    if not r:
+        c.close()
+        return jsonify({"message": "Connecteur introuvable."}), 404
+    c.execute("DELETE FROM connectors WHERE id=?", (cid,))
+    c.execute("DELETE FROM connector_runs WHERE connector_id=?", (cid,))
+    c.commit()
+    c.close()
+    audit(session["user"], "connecteur-supprime", str(cid), "OK", r["nom"])
+    return jsonify({"ok": True})
 
 
 @bp.route("/api/etl/etapes")
