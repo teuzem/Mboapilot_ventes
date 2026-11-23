@@ -105,6 +105,14 @@ export default function Connecteurs() {
   const [feuilles, setFeuilles] = useState([]);
   const [feuilleChoisie, setFeuilleChoisie] = useState("");
   const [apercuFichier, setApercuFichier] = useState(null);
+  const [excelMode, setExcelMode] = useState("com");
+  const [comStatut, setComStatut] = useState(null);
+  const [comClasseurs, setComClasseurs] = useState([]);
+  const [classeurChoisi, setClasseurChoisi] = useState("");
+  const [feuilleCom, setFeuilleCom] = useState("");
+  const [apercuCom, setApercuCom] = useState(null);
+  const [depot, setDepot] = useState(null);
+  const [glisse, setGlisse] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -221,6 +229,111 @@ export default function Connecteurs() {
       setDialogue(null);
       setToast({ message: "Feuille chargée. Ajoutez vos transformations puis enregistrez.", tone: "success" });
     }
+  };
+
+  const connecterExcel = async () => {
+    setBusy(true);
+    try {
+      const s = await api.get("/api/excel-live/statut");
+      setComStatut(s);
+      if (s.connecte) {
+        const r = await api.get("/api/excel-live/classeurs");
+        setComClasseurs(r.classeurs || []);
+      }
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  useEffect(() => {
+    if (dialogue === "source" && type === "excel" && excelMode === "com") {
+      api.get("/api/excel-live/statut").then((s) => {
+        setComStatut(s);
+        if (s.connecte) api.get("/api/excel-live/classeurs").then((r) => setComClasseurs(r.classeurs || []));
+      }).catch(() => {});
+    }
+  }, [dialogue, type, excelMode]);
+
+  const lireClasseurCom = async (wb, feuille) => {
+    setBusy(true);
+    try {
+      const a = await api.get("/api/excel-live/apercu?classeur=" + encodeURIComponent(wb) + "&feuille=" + encodeURIComponent(feuille));
+      if (!a.ok) {
+        setToast({ message: a.message, tone: "error" });
+      } else {
+        setApercuCom(a);
+        const cibles = ["ref", "jour", "canal", "region", "ville", "point_vente", "vendeur",
+          "produit", "famille", "qte", "prix_unit", "remise_pct", "montant", "cout_unit", "devise"];
+        const mappingAuto = {};
+        for (const cible of cibles) {
+          const col = (a.en_tetes || []).find((x) => x.toLowerCase().replace(/[^a-z0-9]/g, "") === cible);
+          if (col) mappingAuto[cible] = col;
+        }
+        setCfg({ source: "excel-com", classeur: wb, feuille, mapping: mappingAuto });
+        setNom(wb.replace(/\.(xlsx|xls|xlsm|csv)$/i, ""));
+      }
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const chargerFeuilleCom = async () => {
+    if (!apercuCom) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/api/excel-live/charger", {
+        classeur: classeurChoisi, feuille: feuilleCom, mapping: cfg.mapping || {}, mode: "ignorer",
+      });
+      setResultat(r);
+      setToast({ message: r.integrees + " lignes ajoutées, " + r.rejets + " rejets", tone: r.ok ? "success" : "error" });
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const deposerFichier = async (fichier) => {
+    if (!fichier) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("fichier", fichier);
+    try {
+      const r = await api.upload("/api/excel-live/upload", fd);
+      if (!r.ok) {
+        setToast({ message: r.message, tone: "error" });
+      } else {
+        setDepot(r);
+        setNom(r.nom.replace(/\.(xlsx|xls|xlsm|csv)$/i, ""));
+        const cibles = ["ref", "jour", "canal", "region", "ville", "point_vente", "vendeur",
+          "produit", "famille", "qte", "prix_unit", "remise_pct", "montant", "cout_unit", "devise"];
+        const mappingAuto = {};
+        for (const cible of cibles) {
+          const col = (r.en_tetes || []).find((x) => x.toLowerCase().replace(/[^a-z0-9]/g, "") === cible);
+          if (col) mappingAuto[cible] = col;
+        }
+        setCfg({ source: "depot", chemin: r.chemin, feuille: r.feuille, mapping: mappingAuto });
+      }
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
+  };
+
+  const chargerDepot = async () => {
+    if (!depot) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/api/fichiers/importer", {
+        chemin: depot.chemin, feuille: depot.feuille, mapping: cfg.mapping || {}, mode: "ignorer",
+      });
+      setResultat(r);
+      setToast({ message: r.integrees + " lignes ajoutées, " + r.rejets + " rejets", tone: r.ok ? "success" : "error" });
+    } catch (ex) {
+      setToast({ message: ex.message, tone: "error" });
+    }
+    setBusy(false);
   };
 
   const enregistrer = async () => {
@@ -483,8 +596,62 @@ export default function Connecteurs() {
                   )}
                 </>
               )}
-              {(type === "dossier" || type === "excel" || type === "pdf") && (
-                <div className="pq-explorateur">
+              {type === "excel" && (
+                <div className="pq-excel-modes">
+                  <div className="pq-modes-tabs">
+                    <button className={excelMode === "com" ? "actif" : ""} onClick={() => setExcelMode("com")}>Excel installé</button>
+                    <button className={excelMode === "parcourir" ? "actif" : ""} onClick={() => setExcelMode("parcourir")}>Parcourir le poste</button>
+                    <button className={excelMode === "depot" ? "actif" : ""} onClick={() => setExcelMode("depot")}>Glisser-déposer</button>
+                  </div>
+
+                  {excelMode === "com" && (
+                    <div className="pq-excel-com">
+                      <div className="pq-com-etat">
+                        <span>{comStatut?.connecte ? "Connecté à Microsoft Excel " + comStatut.version : "Excel non connecté"}</span>
+                        <button className="pq-bouton" onClick={connecterExcel} disabled={busy}>
+                          <RefreshIcon fontSize="small" /> {comStatut?.connecte ? "Actualiser" : "Se connecter"}
+                        </button>
+                      </div>
+                      {comStatut?.erreur && <p className="pq-aide">{comStatut.erreur}</p>}
+                      <div className="pq-com-listes">
+                        <div className="pq-com-colonne">
+                          <b>Classeurs ouverts dans Excel</b>
+                          {comClasseurs.length === 0 && <p className="pq-vide">Ouvrez un classeur dans Excel puis actualisez.</p>}
+                          {comClasseurs.map((wb) => (
+                            <button key={wb.nom} className={classeurChoisi === wb.nom ? "actif" : ""}
+                              onClick={() => { setClasseurChoisi(wb.nom); setFeuilleCom(wb.feuilles[0]?.nom || ""); setApercuCom(null); }}>
+                              <GridViewIcon fontSize="small" /> {wb.nom}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pq-com-colonne">
+                          <b>Feuilles</b>
+                          {(comClasseurs.find((w) => w.nom === classeurChoisi)?.feuilles || []).map((f) => (
+                            <button key={f.nom} className={feuilleCom === f.nom ? "actif" : ""}
+                              onClick={() => { setFeuilleCom(f.nom); lireClasseurCom(classeurChoisi, f.nom); }}>
+                              <TableChartIcon fontSize="small" /> {f.nom}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {apercuCom && (
+                        <div className="pq-exp-apercu">
+                          <span>{apercuCom.total} lignes · plage {apercuCom.plage}</span>
+                          <div className="pq-exp-table">
+                            <table><thead><tr>{apercuCom.en_tetes?.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                              <tbody>{apercuCom.lignes?.slice(0, 4).map((l, i) => <tr key={i}>{apercuCom.en_tetes?.map((c) => <td key={c}>{String(l[c] ?? "").slice(0, 22)}</td>)}</tr>)}</tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                      <button className="pq-bouton plein" onClick={chargerFeuilleCom} disabled={!apercuCom || busy}>
+                        Charger cette feuille dans la requête
+                      </button>
+                    </div>
+                  )}
+
+                  {excelMode === "parcourir" && (
+                    <div className="pq-explorateur">
                   <div className="pq-exp-racines">
                     {racines.map((r) => <button key={r} onClick={() => ouvrirDossier(r)}>{r.split("\\").pop()}</button>)}
                   </div>
@@ -523,7 +690,67 @@ export default function Connecteurs() {
                       </div>
                     </div>
                   )}
-                  <button className="pq-bouton plein" onClick={chargerFeuille} disabled={!fichierChoisi || busy}>Charger cette feuille</button>
+                    <button className="pq-bouton plein" onClick={chargerFeuille} disabled={!fichierChoisi || busy}>Charger cette feuille</button>
+                    </div>
+                    )}
+
+                    {excelMode === "depot" && (
+                      <div className="pq-depot">
+                        <div
+                          className={"pq-dropzone" + (glisse ? " survol" : "")}
+                          onDragOver={(e) => { e.preventDefault(); setGlisse(true); }}
+                          onDragLeave={() => setGlisse(false)}
+                          onDrop={(e) => { e.preventDefault(); setGlisse(false); deposerFichier(e.dataTransfer.files?.[0]); }}
+                        >
+                          <CloudQueueIcon style={{ fontSize: 38, color: "#635bff" }} />
+                          <b>Déposez votre classeur ici</b>
+                          <span>xlsx, xls, xlsm ou csv · 24 Mo maximum</span>
+                          <label className="pq-bouton">
+                            Choisir un fichier
+                            <input type="file" accept=".xlsx,.xls,.xlsm,.csv" hidden onChange={(e) => deposerFichier(e.target.files?.[0])} />
+                          </label>
+                        </div>
+                        {depot && (
+                          <div className="pq-exp-apercu">
+                            <span>{depot.nom} · {depot.total} lignes</span>
+                            <div className="pq-exp-table">
+                              <table><thead><tr>{depot.en_tetes?.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                                <tbody>{depot.lignes?.slice(0, 4).map((l, i) => <tr key={i}>{depot.en_tetes?.map((c) => <td key={c}>{String(l[c] ?? "").slice(0, 22)}</td>)}</tr>)}</tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                        <button className="pq-bouton plein" onClick={chargerDepot} disabled={!depot || busy}>
+                          Charger ce fichier dans la requête
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              {(type === "dossier" || type === "pdf") && (
+                <div className="pq-explorateur">
+                  <div className="pq-exp-racines">
+                    {racines.map((r) => <button key={r} onClick={() => ouvrirDossier(r)}>{r.split("\\").pop()}</button>)}
+                  </div>
+                  <div className="pq-exp-barre">
+                    <span>{dossier?.chemin || "Choisir un dossier"}</span>
+                    {dossier?.parent && <button onClick={() => ouvrirDossier(dossier.parent)}>Retour</button>}
+                  </div>
+                  <div className="pq-exp-liste">
+                    {fichiers.dossiers?.map((d) => <button key={d.chemin} onClick={() => ouvrirDossier(d.chemin)}><FolderOpenIcon fontSize="small" /> {d.nom}</button>)}
+                    {fichiers.fichiers?.map((f) => <button key={f.chemin} className={fichierChoisi?.chemin === f.chemin ? "actif" : ""} onClick={() => choisirFichier(f)}><GridViewIcon fontSize="small" /> {f.nom}</button>)}
+                  </div>
+                  {apercuFichier && (
+                    <div className="pq-exp-apercu">
+                      <span>{apercuFichier.lignes?.length || 0} lignes</span>
+                      <div className="pq-exp-table">
+                        <table><thead><tr>{apercuFichier.en_tetes?.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                          <tbody>{apercuFichier.lignes?.slice(0, 4).map((l, i) => <tr key={i}>{apercuFichier.en_tetes?.map((c) => <td key={c}>{String(l[c] ?? "").slice(0, 22)}</td>)}</tr>)}</tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  <button className="pq-bouton plein" onClick={chargerFeuille} disabled={!fichierChoisi || busy}>Charger cette source</button>
                 </div>
               )}
               {type === "sftp" && (

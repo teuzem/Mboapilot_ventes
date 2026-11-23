@@ -68,6 +68,7 @@ def create_app():
     from .rapports import bp as rapports_bp
     from .fichiers import bp as fichiers_bp
     from .profil import bp as profil_bp
+    from .excel_live import bp as excel_live_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(imports_bp)
@@ -78,6 +79,7 @@ def create_app():
     app.register_blueprint(rapports_bp)
     app.register_blueprint(fichiers_bp)
     app.register_blueprint(profil_bp)
+    app.register_blueprint(excel_live_bp)
 
     @app.before_request
     def garde_session_csrf():

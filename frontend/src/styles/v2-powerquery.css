@@ -16,24 +16,25 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 52px;
-  padding: 0 18px;
-  background: #101d33;
-  color: #fff;
+  height: 40px;
+  padding: 0 16px;
+  background: #fbfcfe;
+  color: #3d4556;
+  border-bottom: 1px solid #e8ebf2;
   flex: 0 0 auto;
 }
-.pq-title-left, .pq-title-right { display: flex; align-items: center; gap: 12px; }
+.pq-title-left, .pq-title-right { display: flex; align-items: center; gap: 9px; }
 .pq-mark {
   display: grid; place-items: center;
-  width: 28px; height: 28px; border-radius: 7px;
-  background: linear-gradient(135deg,#635bff,#00a36c);
-  font-weight: 800; font-size: 15px;
+  width: 24px; height: 24px; border-radius: 6px;
+  background: #eef0ff; color: #635bff;
+  font-weight: 700; font-size: 12px;
 }
-.pq-titlebar b { font-size: 14px; font-weight: 600; }
-.pq-subtitle { font-size: 12px; color: #9aa6bd; }
-.pq-sauvegarde { font-size: 11px; color: #8fe3b8; background: rgba(0,163,108,.16); padding: 4px 10px; border-radius: 20px; }
-.pq-icon { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
-.pq-icon:hover { background: rgba(255,255,255,.16); }
+.pq-titlebar b { font-size: 13px; font-weight: 600; }
+.pq-subtitle { font-size: 11px; color: #9aa1af; }
+.pq-sauvegarde { font-size: 11px; color: #0a7a4b; background: #eaf8f1; padding: 3px 9px; border-radius: 20px; }
+.pq-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 7px; background: #f0f2f7; color: #5b6475; cursor: pointer; }
+.pq-icon:hover { background: #e6e9f1; }
 
 .pq-ribbon-tabs {
   display: flex; gap: 2px; padding: 0 14px;
@@ -195,3 +196,21 @@
 .pq-exp-table th, .pq-exp-table td { padding:5px 7px; border-bottom:1px solid #f0f1f5; text-align:left; white-space:nowrap; }
 .pq-exp-table th { background:#f8f9fc; position:sticky; top:0; }
 .pq-explorateur > .pq-bouton { margin:10px 12px; }
+
+.pq-excel-modes { grid-column:1 / -1; }
+.pq-modes-tabs { display:flex; gap:6px; padding:0 0 10px; }
+.pq-modes-tabs button { padding:8px 14px; border:1px solid #dfe3ec; background:#fff; border-radius:8px; font-size:12px; color:#4a5263; cursor:pointer; }
+.pq-modes-tabs button.actif { background:#eef0ff; border-color:#cfd3ff; color:#4c43d6; font-weight:600; }
+.pq-excel-com, .pq-depot { border:1px solid #e2e6ef; border-radius:11px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+.pq-com-etat { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; color:#0a7a4b; }
+.pq-com-listes { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.pq-com-colonne { display:flex; flex-direction:column; gap:4px; }
+.pq-com-colonne b { font-size:11px; color:#6a7283; }
+.pq-com-colonne button { display:flex; align-items:center; gap:7px; padding:8px 10px; border:1px solid #e8ebf2; background:#fff; border-radius:8px; font-size:12px; cursor:pointer; text-align:left; }
+.pq-com-colonne button:hover { background:#f7f8fc; }
+.pq-com-colonne button.actif { background:#eef0ff; border-color:#cfd3ff; color:#4c43d6; }
+.pq-dropzone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; min-height:180px; border:2px dashed #cfd5e2; border-radius:12px; background:#fafbfe; cursor:pointer; }
+.pq-dropzone.survol { border-color:#635bff; background:#f3f4ff; }
+.pq-dropzone b { font-size:13px; }
+.pq-dropzone span { font-size:11px; color:#8b93a3; }
+.pq-dropzone .pq-bouton { margin-top:6px; }

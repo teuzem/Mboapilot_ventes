@@ -49,7 +49,8 @@ def _securiser(chemin):
     if not p.is_absolute():
         p = BASE / p
     p = p.resolve()
-    for racine in racines():
+    autorises = racines() + [str(BASE.resolve())]
+    for racine in autorises:
         r = Path(racine).resolve()
         try:
             p.relative_to(r)
@@ -157,28 +158,15 @@ def apercu_fichier():
         return jsonify({"message": str(exc)[:300]}), 400
 
 
-@bp.route("/api/fichiers/importer", methods=["POST"])
-@perm_required("imports.write")
-def importer_fichier():
-    """Import réel : mapping des colonnes, contrôles métier, insertion en base."""
-    d = request.get_json(force=True, silent=True) or {}
-    mapping = d.get("mapping") or {}
-    if not mapping.get("jour") or not mapping.get("produit") or not mapping.get("qte"):
-        return jsonify({"message": "Le mapping doit contenir jour, produit et quantité."}), 400
-    try:
-        data = _chargeur(d.get("chemin"), d.get("feuille"), max_lignes=20000)
-    except Exception as exc:
-        return jsonify({"message": str(exc)[:300]}), 400
-
+def inserer_lignes(lignes, mapping, source="excel", mode="ignorer", periode="", reference=None):
+    """Contrôles métier et insertion réelle, partagés par tous les modes d'import."""
     cx = __import__("sqlite3").connect(BASE / "sales.db", timeout=30)
     cx.row_factory = __import__("sqlite3").Row
     cx.execute("PRAGMA journal_mode=WAL")
     connu = set(r[0] for r in cx.execute("SELECT ref FROM sales WHERE ref IS NOT NULL"))
     integ, mises_a_jour, rejets, erreurs = 0, 0, 0, []
-    ref_base = "XL-" + time.strftime("%Y%m%d%H%M%S")
-    periode = d.get("periode", "")
-    mode = d.get("mode", "ignorer")
-    for i, ligne in enumerate(data["lignes"], start=2):
+    ref_base = reference or ("XL-" + time.strftime("%Y%m%d%H%M%S"))
+    for i, ligne in enumerate(lignes, start=2):
         try:
             jour = parse_date_fr(ligne.get(mapping["jour"])).isoformat()
             if periode and not (periode[0] <= jour <= periode[1]):
@@ -216,13 +204,13 @@ def importer_fichier():
             cout = parse_nombre(ligne.get(mapping.get("cout_unit", ""))) if mapping.get("cout_unit") else None
             cx.execute("""INSERT INTO sales(ref,jour,canal,region,ville,point_vente,vendeur,
                           produit,famille,qte,prix_unit,remise_pct,montant,cout_unit,devise,source)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'excel')""",
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                        (ref, jour, canal, region,
                         nettoyer_texte(ligne.get(mapping.get("ville", "")), 60),
                         nettoyer_texte(ligne.get(mapping.get("point_vente", "")), 80),
                         nettoyer_texte(ligne.get(mapping.get("vendeur", "")), 80),
                         produit, nettoyer_texte(ligne.get(mapping.get("famille", "")), 40),
-                        qte, prix, remise or 0, montant, cout, "FCFA"))
+                        qte, prix, remise or 0, montant, cout, "FCFA", source))
             connu.add(ref)
             integ += 1
         except Exception as exc:
@@ -231,9 +219,26 @@ def importer_fichier():
                 erreurs.append("Ligne " + str(i) + " : " + str(exc)[:160])
     cx.commit()
     cx.close()
-    audit(session.get("user", "?"), "import-excel-local", str(d.get("chemin", ""))[-120:], "OK",
+    audit(session.get("user", "?"), "import-excel-local", source[-120:], "OK",
           str(integ) + " lignes / " + str(mises_a_jour) + " mises à jour / " + str(rejets) + " rejets")
     from .schema import evenement
     evenement("import-excel", ref_base, str(integ) + " lignes")
-    return jsonify({"ok": True, "integrees": integ, "mises_a_jour": mises_a_jour,
-                    "rejets": rejets, "erreurs": erreurs, "reference": ref_base})
+    return {"ok": True, "integrees": integ, "mises_a_jour": mises_a_jour,
+            "rejets": rejets, "erreurs": erreurs, "reference": ref_base}
+
+
+@bp.route("/api/fichiers/importer", methods=["POST"])
+@perm_required("imports.write")
+def importer_fichier():
+    """Import réel depuis un classeur ou un CSV du poste."""
+    d = request.get_json(force=True, silent=True) or {}
+    mapping = d.get("mapping") or {}
+    if not mapping.get("jour") or not mapping.get("produit") or not mapping.get("qte"):
+        return jsonify({"message": "Le mapping doit contenir jour, produit et quantité."}), 400
+    try:
+        data = _chargeur(d.get("chemin"), d.get("feuille"), max_lignes=20000)
+    except Exception as exc:
+        return jsonify({"message": str(exc)[:300]}), 400
+    resultat = inserer_lignes(data["lignes"], mapping, source="excel",
+                              mode=d.get("mode", "ignorer"), periode=d.get("periode", ""))
+    return jsonify(resultat)
